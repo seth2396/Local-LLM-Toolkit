@@ -138,6 +138,7 @@ class BaseAgent:
                     messages.append({"role":"tool","content": str(tool_response)})
                 response = self.client.chat.completions.create(model=self.model, messages=messages, tools = self.tools)
                 tool_calls += 1
+            print(response.choices[0].message.content)
             return response
         return None
  

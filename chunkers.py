@@ -1,31 +1,45 @@
 from pathlib import Path
 
 _DEFAULET_CHUNK_SIZE = 500
-_DEFAULT_OVERLAP = 50
+_DEFAULT_OVERLAP = 100
+
+
+#TODO: add method/interface for using a tokenizer to set max character limits and overlap by token count, not just raw character count
+#TODO: implement recursive chunking strategy
+#TODO: implement semantic chunking strategygio
+#TODO: implement LLM based chunking strategy
 
 
 class Chunk:
+    """
+        Data class for holding chunk information
 
+        Attributes:
+            index (int): index value of the chunk in the document
+            content (str): string representation of the content stored in the chunk
+            metadata (dict): dictionary containing metadata for the chunk which should contain source information
+    """
     def __init__(self, content: str, index: int = None, metadata: dict = None):
         self.index = index
         self.content = content
         self.metadata = metadata if metadata else {}
 
 class BaseChunkStrategy:
-    """Base class for text chunking strategies.
+    """
+        Base class for text chunking strategies.
 
-    This class defines the interface and common attributes for chunking
-    large text data into smaller segments. Subclasses should implement
-    the `chunk` method to provide specific chunking logic.
+        This class defines the interface and common attributes for chunking
+        large text data into smaller segments. Subclasses should implement
+        the `chunk` method to provide specific chunking logic.
 
-    Attributes:
-        chunk_size (int): Maximum number of characters (or tokens) per chunk.
-        overlap (int): Number of characters (or tokens) to overlap between chunks.
-        chunks (list): Stores the generated chunks after processing.
+        Attributes:
+            chunk_size (int): Maximum number of characters (or tokens) per chunk default is 500 characters.
+            overlap (int): Number of characters (or tokens) to overlap between chunks default is 100 characters.
+            chunks (list): Stores the generated chunks after processing.
 
-    Example:
-        >>> strategy = MyChunkStrategy(chunk_size=500, overlap=50)
-        >>> chunks = strategy.chunk(document: Document)
+        Example:
+            >>> strategy = MyChunkStrategy(chunk_size=500, overlap=50)
+            >>> chunks = strategy.chunk(document: Document) -> list[Chunk]
     """
     def __init__(self, chunk_size: int = 500, overlap: int = 50, chunk_strategy: dict = None):
         self.chunk_size = chunk_size
@@ -37,8 +51,31 @@ class BaseChunkStrategy:
 
 class FixedSizeChunkStrategy(BaseChunkStrategy):
     """
-    Fixed chunk strategy that splits text into fixed-size chunks with optional overlap.
-    """
+        Chunking strategy that splits text into fixed-size segments with optional overlap.
+
+        This strategy produces sequential chunks of a specified maximum token size.
+        Each chunk may optionally overlap with the previous one, which can improve
+        embedding coherence when used in retrieval pipelines.
+
+        Attributes:
+            max_tokens (int): Maximum number of tokens (or characters) per chunk.
+                document (Document): A document object containing `content` (str or        overlap_tokens (int): Number of tokens (or characters) that overlap
+                    convertible to str) and `metadata` (dict).
+
+            Returns:
+                list[Chunk]: A list of `Chunk` objects, each containing a segment of
+                    text and inherited metadata from the original document.
+
+            Raises:
+                ValueError: If `document.content` is not a string and cannot be
+                    converted to one.
+
+            Example:
+                >>> strategy = FixedSizeChunkStrategy(max_tokens=100, overlap_tokens=20)
+                >>> chunks = strategy.chunk(document)
+                >>> len(chunks)
+                5
+        """
     def __init__(self, max_tokens: int = _DEFAULET_CHUNK_SIZE, overlap_tokens: int = _DEFAULT_OVERLAP):
         super().__init__(chunk_size=max_tokens, overlap=overlap_tokens)
         self.max_tokens = max_tokens
@@ -69,12 +106,7 @@ class FixedSizeChunkStrategy(BaseChunkStrategy):
 
 class RecursiveChunk(BaseChunkStrategy):
     """
-        if not is is_iterable()
-            if size > max_size:
-                split_chunk
-
-        for item in iterable: 
-            recurse(iterable)
+        Recursive Chunking Strategy - Not yet implemented.
     """
     def __init__(self, max_tokens: int = _DEFAULET_CHUNK_SIZE, overlap_tokens: int = _DEFAULT_OVERLAP):
         super().__init__(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
@@ -82,15 +114,16 @@ class RecursiveChunk(BaseChunkStrategy):
 
 class SemanticChunk(RecursiveChunk):
     """
-    Semantic chunk strategy that uses recursive chunking based on content semantics. Goes only as deep as it needs to to break up chunks. Keeps track of hierarchy.
-    Inherits from RecursiveChunkStrategy.
+        Semantic chunk strategy - Not yet implemented.
     """
     def __init__(self, max_tokens: int = _DEFAULET_CHUNK_SIZE, overlap_tokens: int = _DEFAULT_OVERLAP):
         super().__init__(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
         raise NotImplementedError("Semantic chunking not yet implemented")
 
 class LLMChunk(BaseChunkStrategy):
-
+    """
+        LLM based chunker - Not yet implemented.
+    """
     def __init__(self, max_tokens: int = _DEFAULET_CHUNK_SIZE, overlap_tokens: int = _DEFAULT_OVERLAP):
         raise NotImplementedError("LLM-based chunking not yet implemented")
 
