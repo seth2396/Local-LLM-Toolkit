@@ -59,7 +59,7 @@ class FixedSizeChunkStrategy(BaseChunkStrategy):
 
         Attributes:
             max_tokens (int): Maximum number of tokens (or characters) per chunk.
-                document (Document): A document object containing `content` (str or        overlap_tokens (int): Number of tokens (or characters) that overlap
+                document (Document): A document object containing `content` (str or overlap_tokens (int): Number of tokens (or characters) that overlap
                     convertible to str) and `metadata` (dict).
 
             Returns:
@@ -73,8 +73,7 @@ class FixedSizeChunkStrategy(BaseChunkStrategy):
             Example:
                 >>> strategy = FixedSizeChunkStrategy(max_tokens=100, overlap_tokens=20)
                 >>> chunks = strategy.chunk(document)
-                >>> len(chunks)
-                5
+                >>> len(chunks) = 5
         """
     def __init__(self, max_tokens: int = _DEFAULET_CHUNK_SIZE, overlap_tokens: int = _DEFAULT_OVERLAP):
         super().__init__(chunk_size=max_tokens, overlap=overlap_tokens)
