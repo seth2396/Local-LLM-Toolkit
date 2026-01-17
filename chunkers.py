@@ -6,7 +6,7 @@ _DEFAULT_OVERLAP = 100
 
 #TODO: add method/interface for using a tokenizer to set max character limits and overlap by token count, not just raw character count
 #TODO: implement recursive chunking strategy
-#TODO: implement semantic chunking strategy
+#TODO: implement semantic chunking strategygio
 #TODO: implement LLM based chunking strategy
 
 
