@@ -2,24 +2,35 @@ from typing import Any, List, Dict, Optional, Union
 from pydantic import BaseModel, Field
 from openai import OpenAI
 import json
+import logging
 
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
-#TODO: Add implementation of structured output agent
-#TODO: Add temperature as a parameter for agents
-#TODO: Finish StructuredOutput Agent,
+#TODO: StructuredOutputAgent 
+    # Implement tool calls for structured output agent
+
 #TODO: Finish BinaryDecision Agent, Maybe it can be an extension of the StructuredOutput with binary decision as structure
 
+
+# ---------------------------------------------------------- Tool Classes ----------------------------------------------------------
 class BaseTool:
     """
         Base Tool Class
+
+        Attributes:
+            function (callable): The function to be called when the tool is invoked
+            tool_type (str): The type of tool
+            name (str): The name of the tool
+            description (str): A description of the tool
+            parameters (dict): A dictionary defining the parameters for the tool function
     """
-    def __init__(self, function, tool_type: str = "", name: str = "", description: str = "", parameters: dict = {}, logging: bool = False):
+    def __init__(self, function, tool_type: str = "", name: str = "", description: str = "", parameters: dict = {}):
         self.name = name
         self.function = function
         self.tool_type = tool_type
         self.description = description
         self.parameters = parameters
-        self.logging = logging
         self.tool_dict =  {
             "type": tool_type,
             "function": {
@@ -30,8 +41,7 @@ class BaseTool:
             }
     
     def call(self, arguments):
-        if self.logging:
-            print(f"{self.name} called with arguments: {arguments}")
+        logging.info(f"{self.name}: called with arguments: {arguments}")
         return self.function(**arguments)
 
     def __str__(self):
@@ -47,19 +57,30 @@ class Tool(BaseTool):
     """
         Extension of base tool class for tool types which always should return an object for function arguments
     """
-    def __init__(self, function, tool_type: str = "", name: str = "", description: str = "", parameters: dict = {}, logging: bool = False):
+    def __init__(self, function, tool_type: str = "", name: str = "", description: str = "", parameters: dict = {}):
         parameters.update({"type":"object"})
-        super().__init__(function = function, tool_type = tool_type, name = name, description = description, parameters = parameters, logging=logging)
+        super().__init__(function = function, tool_type = tool_type, name = name, description = description, parameters = parameters)
     
 class Function(Tool):
     """
         Extension of Tool class for function tools
     """
-    def __init__(self, function, name: str = "", description: str = "", parameters: dict = {}, logging: bool = False):
-        super().__init__(function = function, tool_type = "function", name=name, description=description, parameters=parameters, logging=logging)
+    def __init__(self, function, name: str = "", description: str = "", parameters: dict = {}):
+        super().__init__(function = function, tool_type = "function", name=name, description=description, parameters=parameters)
  
 # ---------------------------------------------------------- Agent Classes ----------------------------------------------------------
 class BaseAgent:
+    """
+    Docstring for BaseAgent
+    
+        Attributes:
+            system_prompt (str): The system prompt to guide the agents directive 
+            client (OpenAI): The client for interfacing with the model
+            model (str): The model to use for the agent
+            tools (BaseTool | list[BaseTool]): Provide a single tool or a list of tools which the agent has access to
+            tool_call_limit (int): The maximum number of tool calls the agent can make in a single call, default is 5
+            temperature (float): The temperature setting for the model, default is 0.2
+    """
     SUPPORTED_CLIENTS = ["OpenAI"]
     def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, tool_call_limit: int = 5, temperature: float = 0.2):
         if not isinstance(client, OpenAI):
@@ -129,7 +150,7 @@ class BaseAgent:
                     messages.append({"role":"tool","content": str(tool_response)})
                 response = self.client.chat.completions.create(model=self.model, messages=messages, tools = self.tools)
                 tool_calls += 1
-            print(response.choices[0].message.content)
+            logging.debug(response.choices[0].message.content)
             return response
         return None
  
@@ -142,11 +163,15 @@ class ChatAgent(BaseAgent):
         super().__init__(system_prompt, client, model, tools, temperature)
         self.history = [{"role":"system","content":self.system_prompt}]
 
-    def chat(self, message):
+    def chat(self, message: str, history: List[Dict[str,str]] = None):
         #Add message to history before passing context to LLM
         message = {"role":"user","content":message.strip()}
-        self.history += [message]
-
+        
+        #allows for custom history to be passed in
+        if history:
+            self.history = history
+        else:
+            self.history += [message]
 
         #LLM call with model and history
         response = self.client.chat.completions.create(messages=self.history, model=self.model, tools=self.tools, temperature = self.temperature)
@@ -165,6 +190,10 @@ class ChatAgent(BaseAgent):
         #Add message and model respons to history
         self.history += [{"role":"user","content":message.strip()},{"role":"assistant","content":response_text}]
         return response_text
+    
+    def reset_history(self):
+        logging.info("Chat history reset.")
+        self.history = [{"role":"system","content":self.system_prompt}]
 
 class StructuredOutputAgent(BaseAgent):
     """
@@ -176,8 +205,11 @@ class StructuredOutputAgent(BaseAgent):
             model (str): The model to use for the agent
             output_stucture (BaseModel): A pydantic BaseModel structure for the agent to output
             tools (BaseTool | list[BaseTool]): Provide a single tool or a list of tools which the agent has access to
+            structure_name (str): The name of the structure for the output
+            temperature (float): The temperature setting for the model, default is 0.0
+
     """
-    def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, structure: BaseModel = None, structure_name: str = None, temperature: float = 0.2):
+    def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, structure: BaseModel = None, structure_name: str = None, temperature: float = 0.0):
         super().__init__(system_prompt, client, model, tools, temperature)
         if not structure:
             raise AttributeError(f"structure attribute is required, but none was provided.")
@@ -194,9 +226,12 @@ class StructuredOutputAgent(BaseAgent):
         """
             Single message call to the llm using the prompt as initialized.
         """
+        logging.debug(f"StructuredOutputAgent called with structure: {self.structure_name} and schema: {self.structure.model_json_schema()}")
         #Created messages using system prompt and user message
         messages = [{"role":"system","content":self.system_prompt},{"role":"user","content":message}]
 
+        #Previous implementation
+        """
         #Create response format
         response_format = {
             "type":"json_schema",
@@ -207,66 +242,80 @@ class StructuredOutputAgent(BaseAgent):
             "strict": True
         }
 
+        #LLM call with model, messages, and response format
         response = self.client.chat.completions.create(model=self.model, messages=messages, tools = self.tools, response_format = response_format, temperature = self.temperature)
 
-        #check if there is a tool response. Handle subsequent tool calls
+        #Check if there is a tool response. Handle subsequent tool calls
         tool_response = self._check_and_handle_tool_call(response, messages)
         if tool_response:
             return tool_response.choices[0].message.content
 
-        return response.choices[0].message.content
+        return response.choices[0].message.pa
+        """
 
+        completion  = client.chat.completions.parse(
+            model=self.model, 
+            messages=messages, 
+            tools = self.tools, 
+            response_format = self.structure, 
+            temperature = self.temperature)
+
+
+        response = completion.choices[0].message
+
+        if completion.choices[0].finish_reason == "tool_calls":
+            raise AssertionError("Tool calls not supported with structured output agent.")
+            #TODO: implement tool calls for structured output agent
+        elif response.refusal:
+            raise AssertionError(f"Model refused to provide structured output: {response.refusal.reason}")
+        else:
+            return response.parsed
+
+      
+    
 class BinaryDecisionAgent(StructuredOutputAgent):
-    class TestObj(BaseModel):
-        binary_indicator: int = Field(..., ge=0,le=1, description="Binary inidcator for a yes/no or true/false decision" )
+    class BinaryChoice(BaseModel):
+        value: int = Field(..., ge=0,le=1, description="Binary inidcator for a yes/no or true/false choice. 0 = no/false, 1 = yes/true")
 
-    schema = {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "Decision",
-            "schema": {
-                "type": "object",
-                "properties": {"value": {"type": "integer", "enum": [0, 1]}},
-                "required": ["value"],
-                "additionalProperties": False,
-            },
-        },
-        "strict": True}
-
-    def call(self, message):
-        message = "Here is the user message: \n" + message + "respond only with json content."
-        schema = {
-            "type": "object",
-            "properties": {
-                "value": {"type": "integer", "enum": [0, 1]},
-                "reason": {"type": "string", "minLength": 1},
-            },
-            "required": ["value"],
-            "additionalProperties": False,
-            }
-        
-        messages = [{"role":"system","content":self.system_prompt},{"role":"user","content":message}]
-        response = self.client.chat.completions.create(model=self.model, messages=messages, response_format=schema,  temperature = self.temperature)
-        """
-        try:
-            return int(response.choices[0].message.content)
-        except:
-            raise AssertionError(f"Could not convert response to integer. /n {response.choices[0].message.content}")
-        """
-        return response.choices[0].message.content
+    def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, temperature: float = 0.0):
+        super().__init__(system_prompt=system_prompt, client=client, model=model, tools=tools, structure=self.BinaryChoice, structure_name="binary_decision", temperature=temperature)
+    
+    def call(self, message: str):
+        response = super().call(message)
+        return response.value
 
 if __name__ == "__main__":
+    logging.basicConfig(level="INFO")
 
     ollama_url = "http://localhost:11434/v1"
     client = OpenAI(api_key="ollama",base_url=ollama_url)
-    model = "ministral-3:3b"
-    system_prompt = "You are person generator. Generate some details for a fictional person"
+    model = "ministral-3:8b"
 
+    
+
+    #---- Structured Output Agent Test -------
     class TestStruct(BaseModel):
         name: str
-        birth_date: int
-        job: str
-        marital_status: str
+        birth_date: str = Field(..., description="month/day/year")
+        job: str = Field(..., description="Come up with a fictional job title")
+        marital_status: str = Field(..., description="single/married/divorced/widowed")
+        favorite_color: str = Field(..., description="Come up with a favorite color")
 
-    agent = StructuredOutputAgent(system_prompt = system_prompt, client = client, model = model, structure = TestStruct, structure_name = "person_generator", temperature = 0)
-    print(agent.call("create me a person!"))
+    StructuredOutputAgent = StructuredOutputAgent(
+        system_prompt = "You are person generator. Generate some details for a fictional person", 
+        client = client, 
+        model = model, 
+        structure = TestStruct, 
+        structure_name = "person_generator", 
+        temperature = 0.0)
+    print(StructuredOutputAgent.call("create me a person!"))
+
+    #---- Binary Decision Agent Test -------
+    BinaryDecisionAgent = BinaryDecisionAgent(
+        system_prompt = "Decide wether the user statement/question is true or false.",
+        client = client, 
+        model = model,
+        temperature = 0)
+    print(BinaryDecisionAgent.call("Dogs have legs"))
+    print(BinaryDecisionAgent.call("The sky is green"))
+    print(BinaryDecisionAgent.call("2+2=5"))
