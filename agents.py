@@ -121,7 +121,6 @@ class BaseAgent:
         """
         
         messages = [{"role":"system","content":self.system_prompt}] + history + [{"role":"user","content":message}]
-        print(messages)
         logging.info(f"Calling API with {messages}")
         if not stream:
             #Standard LLM call with model and messagses, without streaming
@@ -237,26 +236,26 @@ class BaseAgent:
     
     def _check_and_handle_tool_call(self, response, messages):
         if response.choices[0].finish_reason == "tool_calls": #if no tool is called return None and pass checks
-            
-            tool_messages = [messages[:-1]] #creata a tool messages list that will just contain the context of the previous message and the tool call request & answers
-            tool_messages.append({
-                "role": "assistant",
-                "tool_calls": response.choices[0].message
-            })
-
+            tool_messages = [messages[-1]] #creata a tool messages list that will just contain the context of the previous message and the tool call request & answers
             tool_calls = 0
             while response.choices[0].finish_reason == "tool_calls" and tool_calls < self.tool_call_limit:
-                #look_up tool in dict and execute tool call
-                for tool_call in response.choices[0].message.tool_calls:
-                    arguments = json.loads(tool_call.function.arguments)
-                    tool_response = self.tool_dict.get(tool_call.function.name).call(arguments)
-            
-                    #add response of the tool call to messages and call model again with added context
-                    tool_messages.append({"role":"tool","content": str(tool_response)})
-                print(tool_messages)
+                tools_called = response.choices[0].message.tool_calls #get list of tools called
+                logging.info(f"Tools called: {tools_called}")
+                #Add tool call to tool messages
+                tool_messages.append({
+                    "role": "assistant",
+                    "tool_calls": tools_called
+                })
+                #look up tool called in dict and execute tool call
+                for tool_call in tools_called:
+                    arguments = json.loads(tool_call.function.arguments) #get arguments supplied
+                    tool_response = self.tool_dict.get(tool_call.function.name).call(arguments) #call tool and store it to tool_response
+                    tool_messages.append({"role":"tool","content": str(tool_response)}) #add response of the tool call to messages and call model again with added context
+                    for m in tool_messages:
+                        print(m)
                 response = self.client.chat.completions.create(model=self.model, messages=tool_messages, tools = self.tools)
                 tool_calls += 1
-            logging.debug(response.choices[0].message.content)
+            logging.info(response.choices[0].message.content)
             return response
         return None
  
@@ -399,7 +398,7 @@ if __name__ == "__main__":
         print("Using Ollama Local LLM Client")
         ollama_url = "http://localhost:11434/v1"
         client = OpenAI(api_key="ollama",base_url=ollama_url)
-        model = "ministral-3:8b"
+        model = "ministral-3:3b"
 
     
 
@@ -427,7 +426,7 @@ if __name__ == "__main__":
         client = client, 
         model = model,
         temperature = 0.0)
-    #print(BinaryDecisionAgentExample.call("Dogs have legs"))
+    #print(f"Dogs have legs:{BinaryDecisionAgentExample.call("Dogs have legs")}")
     #print(BinaryDecisionAgentExample.call("The sky is green"))
     #print(BinaryDecisionAgentExample.call("2+2=5"))
 
