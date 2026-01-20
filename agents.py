@@ -7,10 +7,27 @@ import logging
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
+# ---------------------------------------------------------- To Do List ----------------------------------------------------------
 #TODO: StructuredOutputAgent 
     # Implement tool calls for structured output agent
+#TODO: OrchestratorAgent
+    # Implement OrchestratorAgent class
+    # Might have some pre-implemented tools for task tracking, etc
+#TODO: Update Tool handling, currently has a hard limit for number of tool calls
+    # Implement dynamic tool call handling
+#TODO: Add streaming support
+    # Implement streaming response handling
+    # Implement streaming tool call handling
+    # Implement streaming for ChatAgent
+#TODO: Add as tool method to BaseAgent to allow agents to be used as tools in other agents
 
-#TODO: Finish BinaryDecision Agent, Maybe it can be an extension of the StructuredOutput with binary decision as structure
+#--Stretch Goals--
+#TODO: Add support for more LLM clients beyond OpenAI
+#TODO: Improve error handling and logging throughout
+#TODO: Add more detailed docstrings and type hints throughout
+#TODO: Add unit tests for all classes and methods
+#TODO: Add support for tool usage tracking and analytics
+#TODO: Add guardrails for tool calls and agent behavior
 
 
 # ---------------------------------------------------------- Tool Classes ----------------------------------------------------------
@@ -99,24 +116,99 @@ class BaseAgent:
         self.tool_call_limit = tool_call_limit
         self.temperature = temperature
 
-    def call(self, message: str ):
+    def chat(self, message: str, history: list[dict] = [], stream: bool = False):
+        """
+            Chat method to handle message calls to the llm using the prompt as initialized.
+            Allows for history to be passed in as a list of dicts with role and content keys
+        """
+        
+        messages = [{"role":"system","content":self.system_prompt}] + history + [{"role":"user","content":message}]
+        print(messages)
+        logging.info(f"Calling API with {messages}")
+        if not stream:
+            #Standard LLM call with model and messagses, without streaming
+            response = self.client.chat.completions.create(
+                model=self.model, 
+                messages=messages, 
+                tools = self.tools, 
+                temperature = self.temperature
+            )
+
+            #check if there is a tool response. Handle subsequent tool calls
+            tool_response = self._check_and_handle_tool_call(response, messages)
+            if tool_response:
+                return tool_response.choices[0].message.content
+
+            return response.choices[0].message.content
+        
+        else:
+
+            #Streaming LLM call with model and messages
+            response = self.client.chat.completions.create(
+                model=self.model, 
+                messages=messages, 
+                tools = self.tools, 
+                temperature = self.temperature, 
+                stream=True
+                )
+            
+            #wrap the generator in a function so the upstream functions do not return a generator
+            def generate():
+                for chunk in response:
+                    if chunk: #if none is returned do not yield a chunk
+                        choice = chunk.choices[0]
+                        if choice.delta.tool_calls:
+                            #handle tool calls here or anything that depends on generator yield here.
+                            raise NotImplementedError(f"Model attempted to call {choice.tools_calls}. \nTool calls not yet supported for streaming.")
+                        yield choice.delta.content
+            return generate()
+            
+    def call(self, message: str, stream: bool = False):
         """
             Single message call to the llm using the prompt as initialized.
         """
-        messages = [{"role":"system","content":self.system_prompt},{"role":"user","content":message}]
-        response = self.client.chat.completions.create(model=self.model, messages=messages, tools = self.tools, temperature = self.temperature)
-
-        #check if there is a tool response. Handle subsequent tool calls
-        tool_response = self._check_and_handle_tool_call(response, messages)
-        if tool_response:
-            return tool_response.choices[0].message.content
-
-        return response.choices[0].message.content
+        logging.info(f"Agent Called with {message}")
+        return self.chat(message=message, history=[], stream=stream)
 
     def inject(self, message :str, inject: Union[str: list[str]], inject_point_string: str = "{inject}"):
         """
-            Replace each {inject} in the system prompt with provided inject value(s) str or list[str] before calling the agent.
+            Injects one or more values into the system prompt before invoking the agent.
+
+            This method temporarily replaces each occurrence of `inject_point_string` in
+            the system prompt with the provided injection value(s). If `inject` is a
+            single string, exactly one placeholder must exist. If `inject` is a list of
+            strings, the number of placeholders must match the number of injection
+            values. After constructing the modified prompt, the method calls the agent
+            with the given `message` and then restores the original system prompt.
+
+            Parameters
+            ----------
+            message : str
+                The message passed to the agent after prompt injection.
+            inject : str or list[str]
+                The value(s) to substitute into the system prompt. A single string
+                replaces one placeholder; a list replaces multiple placeholders in order.
+            inject_point_string : str, optional
+                The placeholder token in the system prompt that marks injection points.
+                Defaults to "{inject}".
+
+            Returns
+            -------
+            Any
+                The agent's response to the provided message.
+
+            Raises
+            ------
+            ValueError
+                If the number of placeholders in the system prompt does not match the
+                number of provided injection values.
+
+            Notes
+            -----
+            The system prompt is restored to its original state after the agent call,
+            ensuring that injections do not persist across invocations.
         """
+
         prompt_holder_var = self.system_prompt
         if isinstance(inject, list):
             num_injects =len(inject)
@@ -134,21 +226,36 @@ class BaseAgent:
 
         return response
 
-    def chat():
-        raise NotImplementedError("Load method not implemented.")
+    def as_tool(self, name: str, description: str, parameters: dict):
+        """
+            Return the agent as a tool for use in other agents.
+        """
+        raise NotImplementedError("returning agents as tools not yet implemented. Coming soon :)")
+        #This needs work
+        def tool_function(message: str):
+            return self.call(message)
+        
+        return Tool(function=tool_function, tool_type="agent", name=name, description=description, parameters=parameters)
     
     def _check_and_handle_tool_call(self, response, messages):
-        if response.choices[0].finish_reason == "tool_calls":
+        if response.choices[0].finish_reason == "tool_calls": #if no tool is called return None and pass checks
+            
+            tool_messages = [messages[:-1]] #creata a tool messages list that will just contain the context of the previous message and the tool call request & answers
+            tool_messages.append({
+                "role": "assistant",
+                "tool_calls": response.choices[0].message
+            })
+
             tool_calls = 0
             while response.choices[0].finish_reason == "tool_calls" and tool_calls < self.tool_call_limit:
-                #look_up tool in dict and execute to0l call
+                #look_up tool in dict and execute tool call
                 for tool_call in response.choices[0].message.tool_calls:
                     arguments = json.loads(tool_call.function.arguments)
                     tool_response = self.tool_dict.get(tool_call.function.name).call(arguments)
             
-                    #add response to messages and call model again with added context
-                    messages.append({"role":"tool","content": str(tool_response)})
-                response = self.client.chat.completions.create(model=self.model, messages=messages, tools = self.tools)
+                    #add response of the tool call to messages and call model again with added context
+                    tool_messages.append({"role":"tool","content": str(tool_response)})
+                response = self.client.chat.completions.create(model=self.model, messages=tool_messages, tools = self.tools)
                 tool_calls += 1
             logging.debug(response.choices[0].message.content)
             return response
@@ -156,35 +263,47 @@ class BaseAgent:
  
 class OrchestratorAgent(BaseAgent):
     def __init__(self):
-        raise NotImplementedError("Load method not implemented.")
+        raise NotImplementedError("Orchestrator Agent Not yet implemented")
         
 class ChatAgent(BaseAgent):
     def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, temperature: float = 0.2):
         super().__init__(system_prompt, client, model, tools, temperature)
-        self.history = [{"role":"system","content":self.system_prompt}]
+        self.history = []
 
-    def chat(self, message: str, history: List[Dict[str,str]] = None):
-        #Add message to history before passing context to LLM
-        message = {"role":"user","content":message.strip()}
-        
-        #allows for custom history to be passed in
+    def chat(self, message: str, stream = False, history: List[Dict[str,str]] = None):
+        #Allows for custom history to be passed which overwrites other otherwise history is stored 
         if history:
             self.history = history
+        
+        if not stream:
+            #Call LLM with history
+            response_text = super().chat(message = message, history = self.history, stream = stream)
+
+            #Add model response to history
+            self.history += [
+                {"role":"user","content":message},
+                {"role":"assistant","content":response_text}
+            ]
+            return response_text
+        
         else:
-            self.history += [message]
+            #Stream reults from chat
+            response_gen = super().chat(message = message, history = self.history, stream = stream)
+            def generator():
+                response_tokens = []
+                for token in response_gen:
+                    if token:
+                        response_tokens.append(token)
+                        yield token
 
-        #LLM call with model and history
-        response = self.client.chat.completions.create(messages=self.history, model=self.model, tools=self.tools, temperature = self.temperature)
-        tool_response = self._check_and_handle_tool_call(response, [message])
-        if tool_response:
-            response_text = tool_response.choices[0].message.content
-        else: 
-            response_text = response.choices[0].message.content
-
-        #Add model response to history
-        self.history += [{"role":"assistant","content":response_text}]
-        return response_text
-    
+                #After streaming completes, update history
+                response_text = "".join(response_tokens)
+                self.history += [
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": response_text},
+                ]
+            return generator()
+     
     def inject(self, message, inject):
         response_text = super().inject(message, inject)
         #Add message and model respons to history
@@ -230,28 +349,6 @@ class StructuredOutputAgent(BaseAgent):
         #Created messages using system prompt and user message
         messages = [{"role":"system","content":self.system_prompt},{"role":"user","content":message}]
 
-        #Previous implementation
-        """
-        #Create response format
-        response_format = {
-            "type":"json_schema",
-            "json_schema" : {
-                "name":self.structure_name,
-                "schema":self.structure.model_json_schema()
-            },
-            "strict": True
-        }
-
-        #LLM call with model, messages, and response format
-        response = self.client.chat.completions.create(model=self.model, messages=messages, tools = self.tools, response_format = response_format, temperature = self.temperature)
-
-        #Check if there is a tool response. Handle subsequent tool calls
-        tool_response = self._check_and_handle_tool_call(response, messages)
-        if tool_response:
-            return tool_response.choices[0].message.content
-
-        return response.choices[0].message.pa
-        """
 
         completion  = client.chat.completions.parse(
             model=self.model, 
@@ -259,7 +356,6 @@ class StructuredOutputAgent(BaseAgent):
             tools = self.tools, 
             response_format = self.structure, 
             temperature = self.temperature)
-
 
         response = completion.choices[0].message
 
@@ -270,9 +366,7 @@ class StructuredOutputAgent(BaseAgent):
             raise AssertionError(f"Model refused to provide structured output: {response.refusal.reason}")
         else:
             return response.parsed
-
-      
-    
+ 
 class BinaryDecisionAgent(StructuredOutputAgent):
     class BinaryChoice(BaseModel):
         value: int = Field(..., ge=0,le=1, description="Binary inidcator for a yes/no or true/false choice. 0 = no/false, 1 = yes/true")
@@ -284,12 +378,29 @@ class BinaryDecisionAgent(StructuredOutputAgent):
         response = super().call(message)
         return response.value
 
-if __name__ == "__main__":
-    logging.basicConfig(level="INFO")
+# ---------------------------------------------------------- Example Usage ----------------------------------------------------------
 
-    ollama_url = "http://localhost:11434/v1"
-    client = OpenAI(api_key="ollama",base_url=ollama_url)
-    model = "ministral-3:8b"
+
+if __name__ == "__main__":
+    logging.basicConfig(level="WARNING")
+
+    import os
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+
+
+    #---- Setup LLM Client -------
+    if openai_api_key :
+        print("Using OpenAI API Client")
+        openai_base_url = "https://api.openai.com/v1"
+        client = OpenAI(api_key=openai_api_key, base_url= openai_base_url)
+        model = "gpt-4o-mini"
+    else:
+        print("Using Ollama Local LLM Client")
+        ollama_url = "http://localhost:11434/v1"
+        client = OpenAI(api_key="ollama",base_url=ollama_url)
+        model = "ministral-3:8b"
 
     
 
@@ -301,21 +412,36 @@ if __name__ == "__main__":
         marital_status: str = Field(..., description="single/married/divorced/widowed")
         favorite_color: str = Field(..., description="Come up with a favorite color")
 
-    StructuredOutputAgent = StructuredOutputAgent(
+    StructuredOutputAgentExample = StructuredOutputAgent(
         system_prompt = "You are person generator. Generate some details for a fictional person", 
         client = client, 
         model = model, 
         structure = TestStruct, 
         structure_name = "person_generator", 
         temperature = 0.0)
-    print(StructuredOutputAgent.call("create me a person!"))
+    print(StructuredOutputAgentExample.call("create me a person!"))
 
     #---- Binary Decision Agent Test -------
-    BinaryDecisionAgent = BinaryDecisionAgent(
+    BinaryDecisionAgentExample = BinaryDecisionAgent(
         system_prompt = "Decide wether the user statement/question is true or false.",
         client = client, 
         model = model,
         temperature = 0)
-    print(BinaryDecisionAgent.call("Dogs have legs"))
-    print(BinaryDecisionAgent.call("The sky is green"))
-    print(BinaryDecisionAgent.call("2+2=5"))
+    #print(BinaryDecisionAgentExample.call("Dogs have legs"))
+    #print(BinaryDecisionAgentExample.call("The sky is green"))
+    #print(BinaryDecisionAgentExample.call("2+2=5"))
+
+    #---- Chat Agent Test -------
+    ChatAgentExample = ChatAgent(
+        system_prompt = "You are a helpful assistant that provides concise answers.",
+        client = client,
+        model = model,
+        temperature = 0.2)
+    #response = ChatAgentExample.chat("Hello! How are you today?",stream =True)
+    #for token in response:
+    #   print(token, end="", flush=True)
+
+    # print(ChatAgentExample.history)
+    #response = ChatAgentExample.chat("Can you give me a description of a humming bird?",stream =True)
+    #for token in response:
+    #    print(token, end="", flush=True)
