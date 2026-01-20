@@ -16,9 +16,7 @@ logger.addHandler(logging.NullHandler())
 #TODO: Update Tool handling, currently has a hard limit for number of tool calls
     # Implement dynamic tool call handling
 #TODO: Add streaming support
-    # Implement streaming response handling
     # Implement streaming tool call handling
-    # Implement streaming for ChatAgent
 #TODO: Add as tool method to BaseAgent to allow agents to be used as tools in other agents
 
 #--Stretch Goals--
@@ -255,6 +253,7 @@ class BaseAgent:
             
                     #add response of the tool call to messages and call model again with added context
                     tool_messages.append({"role":"tool","content": str(tool_response)})
+                print(tool_messages)
                 response = self.client.chat.completions.create(model=self.model, messages=tool_messages, tools = self.tools)
                 tool_calls += 1
             logging.debug(response.choices[0].message.content)
@@ -391,7 +390,7 @@ if __name__ == "__main__":
 
 
     #---- Setup LLM Client -------
-    if openai_api_key :
+    if openai_api_key:
         print("Using OpenAI API Client")
         openai_base_url = "https://api.openai.com/v1"
         client = OpenAI(api_key=openai_api_key, base_url= openai_base_url)
@@ -411,6 +410,7 @@ if __name__ == "__main__":
         job: str = Field(..., description="Come up with a fictional job title")
         marital_status: str = Field(..., description="single/married/divorced/widowed")
         favorite_color: str = Field(..., description="Come up with a favorite color")
+        
 
     StructuredOutputAgentExample = StructuredOutputAgent(
         system_prompt = "You are person generator. Generate some details for a fictional person", 
@@ -423,10 +423,10 @@ if __name__ == "__main__":
 
     #---- Binary Decision Agent Test -------
     BinaryDecisionAgentExample = BinaryDecisionAgent(
-        system_prompt = "Decide wether the user statement/question is true or false.",
+        system_prompt = "Decide whether the user statement/question is true or false.",
         client = client, 
         model = model,
-        temperature = 0)
+        temperature = 0.0)
     #print(BinaryDecisionAgentExample.call("Dogs have legs"))
     #print(BinaryDecisionAgentExample.call("The sky is green"))
     #print(BinaryDecisionAgentExample.call("2+2=5"))
