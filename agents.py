@@ -15,8 +15,6 @@ logger.addHandler(logging.NullHandler())
     # Might have some pre-implemented tools for task tracking, etc
 #TODO: Update Tool handling, currently has a hard limit for number of tool calls
     # Implement dynamic tool call handling
-#TODO: Add streaming support
-    # Implement streaming tool call handling
 #TODO: Add as tool method to BaseAgent to allow agents to be used as tools in other agents
 
 #--Stretch Goals--
@@ -26,12 +24,15 @@ logger.addHandler(logging.NullHandler())
 #TODO: Add unit tests for all classes and methods
 #TODO: Add support for tool usage tracking and analytics
 #TODO: Add guardrails for tool calls and agent behavior
+#TODO: Update as_tool function for structured ouputs, so callers can choose what they want to return from the structure
 
 
 def log_call(func):
     def logged_function_call(*args, **kwargs):
         logging.info(f"{func.__name__} called with args={args}, kwargs={kwargs}")
-        return func(*args, **kwargs)
+        output = func(*args, **kwargs)
+        logging.info(f"{func.__name__} completed with output = {output}")
+        return output
     return logged_function_call
 
 # ---------------------------------------------------------- Tool Classes ----------------------------------------------------------
@@ -186,10 +187,13 @@ class BaseAgent:
                         choice = chunk.choices[0]
                         if choice.delta.tool_calls: #if a tool call is encountered, handle the tool call and generate the response
                             response_after_tools = self.__handle_tool_call(responses = choice.delta.tool_calls, messages = messages)
-                            for chunk in response_after_tools:
-                                choice = chunk.choices[0]
-                                yield choice.delta.content
-                        yield choice.delta.content
+                            for tool_response_chunk in response_after_tools:
+                                if tool_response_chunk:
+                                    choice = tool_response_chunk.choices[0]
+                                    yield choice.delta.content
+                            break
+                        else:
+                            yield choice.delta.content
             return generate()
             
     def call(self, message: str, stream: bool = False):
@@ -272,6 +276,7 @@ class BaseAgent:
     def _check_and_handle_tool_call(self, response, messages):
         if response.choices[0].finish_reason == "tool_calls": #if no tool is called return None and pass checks
             tool_messages = [messages[-1]] #creata a tool messages list that will just contain the context of the previous message and the tool call request & answers
+            tool_calls = 0
             while response.choices[0].finish_reason == "tool_calls" and tool_calls < self.tool_call_limit:
                 tools_called = response.choices[0].message.tool_calls #get list of tools called
                 logging.info(f"Tools called: {tools_called}")
@@ -291,6 +296,7 @@ class BaseAgent:
                         logging.error(f"{tool_call.function.name} was called but does not exist in the tools supplied to the agent.")
                         tool_messages.append({"role":"tool","content": "ERROR: invalid request"})
                 response = self.client.chat.completions.create(model=self.model, messages=tool_messages, tools = self.tools)
+                tool_calls+=1
             logging.info(response.choices[0].message.content)
             return response
         return None
@@ -509,7 +515,7 @@ if __name__ == "__main__":
         structure = TestStruct, 
         structure_name = "person_generator", 
         temperature = 0.0)
-    print(StructuredOutputAgentExample.call("create me a person!"))
+    #print(StructuredOutputAgentExample.call("create me a person!"))
 
     #---- Binary Decision Agent Test -------
     print("----Binary Decision Agent Test----")
@@ -519,7 +525,7 @@ if __name__ == "__main__":
         model = model,
         temperature = 0.0,
         truefalse = True)
-    print(f"Dogs have legs:{BinaryDecisionAgentExample.call("Dogs have legs")}")
+    #print(f"Dogs have legs:{BinaryDecisionAgentExample.call("Dogs have legs")}")
     #print(BinaryDecisionAgentExample.call("The sky is green"))
     #print(BinaryDecisionAgentExample.call("2+2=5"))
 
@@ -531,8 +537,8 @@ if __name__ == "__main__":
         model = model,
         temperature = 0.2)
     response = ChatAgentExample.chat("Hello! How are you today?",stream =True)
-    for token in response:
-       print(token, end="", flush=True)
+    #for token in response:
+    #   print(token, end="", flush=True)
 
     # print(ChatAgentExample.history)
     #response = ChatAgentExample.chat("Can you give me a description of a humming bird?",stream =True)
@@ -559,6 +565,9 @@ if __name__ == "__main__":
         tools = TrueFalseTool)
 
     print("----Agents as tool and tool stream test----")
-    response = chatbot.call("Was pocahontas a real person?", stream = True)
+    response = chatbot.chat("Are polar bears good swimmers?", stream = True)
+    for token in response:
+        print(token, end="", flush=True)
+    response = chatbot.chat("What was my last question?", stream = True)
     for token in response:
         print(token, end="", flush=True)
