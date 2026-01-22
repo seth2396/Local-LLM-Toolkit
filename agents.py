@@ -28,6 +28,12 @@ logger.addHandler(logging.NullHandler())
 #TODO: Add guardrails for tool calls and agent behavior
 
 
+def log_call(func):
+    def logged_function_call(*args, **kwargs):
+        logging.info(f"{func.__name__} called with args={args}, kwargs={kwargs}")
+        return func(*args, **kwargs)
+    return logged_function_call
+
 # ---------------------------------------------------------- Tool Classes ----------------------------------------------------------
 class BaseTool:
     """
@@ -55,9 +61,9 @@ class BaseTool:
                 }
             }
     
-    def call(self, arguments):
-        logging.info(f"{self.name}: called with arguments: {arguments}")
-        return self.function(**arguments)
+    def call(self,*args, **kwargs):
+        logging.info(f"{self.name}: called with arguments: {kwargs}")
+        return self.function(**kwargs)
 
     def __str__(self):
         return str(self.tool_dict)
@@ -83,6 +89,29 @@ class Function(Tool):
     def __init__(self, function, name: str = "", description: str = "", parameters: dict = {}):
         super().__init__(function = function, tool_type = "function", name=name, description=description, parameters=parameters)
  
+class Task(BaseModel):
+    description: str = Field(...,description="A description of the task that needs to be done.")
+    information: str = Field(...,description="Additional information or context supplied to complete the task.")
+    status: str = Field(default="pending",description="Completion status of the task.")
+    assigned: Optional[str] = Field(...,description="Agent assigned to complete the task.")
+    dependencies: Optional[list] = Field(...,description="List of dependencies.")
+    result: Optional[Any] = Field(default=None, description="The output or result produced after task execution.")
+
+    def mark_complete():
+        self.status = "completed"
+
+    def mark_in_progress():
+        self.status = "in-progress"    
+    
+    def mark_waiting():
+        self.status = "waiting"
+
+class TaskList(BaseModel):
+        """
+            List of tasks fo agent to populate.
+        """
+        tasks: List[Task] = Field(default_factory=dict,description="A dictionary containing a list of tasks as the key, and description of the task as the value")
+
 # ---------------------------------------------------------- Agent Classes ----------------------------------------------------------
 class BaseAgent:
     """
@@ -114,6 +143,7 @@ class BaseAgent:
         self.tool_call_limit = tool_call_limit
         self.temperature = temperature
 
+    @log_call 
     def chat(self, message: str, history: list[dict] = [], stream: bool = False):
         """
             Chat method to handle message calls to the llm using the prompt as initialized.
@@ -141,7 +171,7 @@ class BaseAgent:
         else:
 
             #Streaming LLM call with model and messages
-            response = self.client.chat.completions.create(
+            response_stream = self.client.chat.completions.create(
                 model=self.model, 
                 messages=messages, 
                 tools = self.tools, 
@@ -151,12 +181,14 @@ class BaseAgent:
             
             #wrap the generator in a function so the upstream functions do not return a generator
             def generate():
-                for chunk in response:
+                for chunk in response_stream:
                     if chunk: #if none is returned do not yield a chunk
                         choice = chunk.choices[0]
-                        if choice.delta.tool_calls:
-                            #handle tool calls here or anything that depends on generator yield here.
-                            raise NotImplementedError(f"Model attempted to call {choice.tools_calls}. \nTool calls not yet supported for streaming.")
+                        if choice.delta.tool_calls: #if a tool call is encountered, handle the tool call and generate the response
+                            response_after_tools = self.__handle_tool_call(responses = choice.delta.tool_calls, messages = messages)
+                            for chunk in response_after_tools:
+                                choice = chunk.choices[0]
+                                yield choice.delta.content
                         yield choice.delta.content
             return generate()
             
@@ -223,21 +255,23 @@ class BaseAgent:
 
         return response
 
-    def as_tool(self, name: str, description: str, parameters: dict):
+    def as_tool(self, name: str, description: str, parameters: dict = None):
         """
             Return the agent as a tool for use in other agents.
         """
-        raise NotImplementedError("returning agents as tools not yet implemented. Coming soon :)")
-        #This needs work
-        def tool_function(message: str):
-            return self.call(message)
-        
-        return Tool(function=tool_function, tool_type="agent", name=name, description=description, parameters=parameters)
+        if not parameters:
+            parameters = {
+                "properties": {
+                    "message": {"type":"string", "description":"The message content to be sent to the agent."},
+                },
+                "required":["message"]
+            }
+
+        return Function(function=self.call, name=name, description=description, parameters=parameters)
     
     def _check_and_handle_tool_call(self, response, messages):
         if response.choices[0].finish_reason == "tool_calls": #if no tool is called return None and pass checks
             tool_messages = [messages[-1]] #creata a tool messages list that will just contain the context of the previous message and the tool call request & answers
-            tool_calls = 0
             while response.choices[0].finish_reason == "tool_calls" and tool_calls < self.tool_call_limit:
                 tools_called = response.choices[0].message.tool_calls #get list of tools called
                 logging.info(f"Tools called: {tools_called}")
@@ -248,21 +282,42 @@ class BaseAgent:
                 })
                 #look up tool called in dict and execute tool call
                 for tool_call in tools_called:
-                    arguments = json.loads(tool_call.function.arguments) #get arguments supplied
-                    tool_response = self.tool_dict.get(tool_call.function.name).call(arguments) #call tool and store it to tool_response
-                    tool_messages.append({"role":"tool","content": str(tool_response)}) #add response of the tool call to messages and call model again with added context
-                    for m in tool_messages:
-                        print(m)
+                    tool = self.tool_dict.get(tool_call.function.name)
+                    if tool:
+                        arguments = json.loads(tool_call.function.arguments) #get arguments supplied by llm
+                        tool_response = tool.call(**arguments) #call tool and store it to tool_response
+                        tool_messages.append({"role":"tool","content": str(tool_response)}) #add response of the tool call to messages and call model again with added context
+                    else:
+                        logging.error(f"{tool_call.function.name} was called but does not exist in the tools supplied to the agent.")
+                        tool_messages.append({"role":"tool","content": "ERROR: invalid request"})
                 response = self.client.chat.completions.create(model=self.model, messages=tool_messages, tools = self.tools)
-                tool_calls += 1
             logging.info(response.choices[0].message.content)
             return response
         return None
- 
-class OrchestratorAgent(BaseAgent):
-    def __init__(self):
-        raise NotImplementedError("Orchestrator Agent Not yet implemented")
+
+    @log_call
+    def  __handle_tool_call(self,responses, messages):
+        tool_messages = [messages[-1]] #creat a tool messages list that will just contain the context of the previous message and the tool call request & answers
+        #construct tool call message from response
+        tool_calls = [{"id":response.id,"type":response.type,"function":{"name":response.function.name,"arguments":response.function.arguments}} for response in responses]
+        tool_messages.append({"role": "assistant","tool_calls": tool_calls}) #add tool call to history, expected by openAI
+
+        for tool_call in tool_calls:
+            #look up tool called in dict and execute tool call
+            tool = self.tool_dict.get(tool_call['function']['name'])
+            if tool:
+                arguments = json.loads(tool_call['function']['arguments']) #get arguments supplied by llm
+                tool_response = tool.call(**arguments) #call tool and store it to tool_response
+
+                #construct tool response message expected by openAI
+                tool_messages.append({"role":"tool", "tool_call_id":tool_call['id'], "name":tool_call['function']['name'],"content": str(tool_response)}) 
+            else:
+                logging.error(f"{tool_call.function.name} was called but does not exist in the tools supplied to the agent.")
+                tool_messages.append({"role":"tool", "tool_call_id":tool_call['id'], "name":tool_call['function']['name'],"content": f"InvalidRequest: Tool {tool_call['function']['name']} does not exist."})
         
+        response = self.client.chat.completions.create(model=self.model, messages=tool_messages, tools = self.tools, stream=True)
+        return response
+     
 class ChatAgent(BaseAgent):
     def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, temperature: float = 0.2):
         super().__init__(system_prompt, client, model, tools, temperature)
@@ -364,23 +419,61 @@ class StructuredOutputAgent(BaseAgent):
             raise AssertionError(f"Model refused to provide structured output: {response.refusal.reason}")
         else:
             return response.parsed
- 
+        
 class BinaryDecisionAgent(StructuredOutputAgent):
+
     class BinaryChoice(BaseModel):
         value: int = Field(..., ge=0,le=1, description="Binary inidcator for a yes/no or true/false choice. 0 = no/false, 1 = yes/true")
 
-    def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, temperature: float = 0.0):
-        super().__init__(system_prompt=system_prompt, client=client, model=model, tools=tools, structure=self.BinaryChoice, structure_name="binary_decision", temperature=temperature)
+    class TFChoice(BaseModel):
+        value: bool = Field(..., description="True/False inidcator for a yes/no or true/false question.")
+
+    def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, temperature: float = 0.0, truefalse: bool = False):
+        if truefalse:
+            super().__init__(system_prompt=system_prompt, client=client, model=model, tools=tools, structure=self.TFChoice, structure_name="TrueFalse_decision", temperature=temperature)
+        else:
+            super().__init__(system_prompt=system_prompt, client=client, model=model, tools=tools, structure=self.BinaryChoice, structure_name="binary_decision", temperature=temperature)
     
     def call(self, message: str):
         response = super().call(message)
         return response.value
 
+#This might just be an implementation of a list creator, might rename as necessary. orchestrator shouldnt output lists.
+class OrchestratorAgent(StructuredOutputAgent):
+
+    def check_list(self):
+        return self.task_list.tasks
+
+    def edit_list(self, action: str, task_name: Optional[str]):
+        pass
+    
+    #check_list_tool = Function(check_list, )
+
+    #edit_list_tool = Function(edit_list, )
+
+    def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, temperature: float = 0.0):
+        super().__init__(system_prompt = system_prompt, client = client, model = model, tools = tools, structure = TaskList, structure_name ="TaskList", temperature = temperature)
+        
+
+    def call(self, message: str) -> TaskList:
+        self.task_list = super().call(message)
+        return self.task_list
+       
+class TaskAgent:
+    """
+        A wrapper class that takes an agent and a task
+    """
+    def __init__(self, agent: BaseAgent, task: Task):
+        self.agent = agent
+        self.task = task
+    
+    def execute(self, *args, **kwargs):
+        self.task.mark_in_progress()
+        
 # ---------------------------------------------------------- Example Usage ----------------------------------------------------------
 
-
 if __name__ == "__main__":
-    logging.basicConfig(level="WARNING")
+    logging.basicConfig(level="INFO")
 
     import os
     from dotenv import load_dotenv
@@ -400,9 +493,8 @@ if __name__ == "__main__":
         client = OpenAI(api_key="ollama",base_url=ollama_url)
         model = "ministral-3:3b"
 
-    
-
     #---- Structured Output Agent Test -------
+    print("----Structured Output Agent Test----")
     class TestStruct(BaseModel):
         name: str
         birth_date: str = Field(..., description="month/day/year")
@@ -410,7 +502,6 @@ if __name__ == "__main__":
         marital_status: str = Field(..., description="single/married/divorced/widowed")
         favorite_color: str = Field(..., description="Come up with a favorite color")
         
-
     StructuredOutputAgentExample = StructuredOutputAgent(
         system_prompt = "You are person generator. Generate some details for a fictional person", 
         client = client, 
@@ -421,26 +512,53 @@ if __name__ == "__main__":
     print(StructuredOutputAgentExample.call("create me a person!"))
 
     #---- Binary Decision Agent Test -------
+    print("----Binary Decision Agent Test----")
     BinaryDecisionAgentExample = BinaryDecisionAgent(
         system_prompt = "Decide whether the user statement/question is true or false.",
         client = client, 
         model = model,
-        temperature = 0.0)
-    #print(f"Dogs have legs:{BinaryDecisionAgentExample.call("Dogs have legs")}")
+        temperature = 0.0,
+        truefalse = True)
+    print(f"Dogs have legs:{BinaryDecisionAgentExample.call("Dogs have legs")}")
     #print(BinaryDecisionAgentExample.call("The sky is green"))
     #print(BinaryDecisionAgentExample.call("2+2=5"))
 
     #---- Chat Agent Test -------
+    print("----Chat Stream Test----")
     ChatAgentExample = ChatAgent(
         system_prompt = "You are a helpful assistant that provides concise answers.",
         client = client,
         model = model,
         temperature = 0.2)
-    #response = ChatAgentExample.chat("Hello! How are you today?",stream =True)
-    #for token in response:
-    #   print(token, end="", flush=True)
+    response = ChatAgentExample.chat("Hello! How are you today?",stream =True)
+    for token in response:
+       print(token, end="", flush=True)
 
     # print(ChatAgentExample.history)
     #response = ChatAgentExample.chat("Can you give me a description of a humming bird?",stream =True)
     #for token in response:
     #    print(token, end="", flush=True)
+
+    prompt = "Based on the users query, break up the query into subtasks that need to be done in order to complete the query"
+
+    OrchestratorAgentExample = OrchestratorAgent(
+        system_prompt = "Based on the users query, break up the query into subtasks that need to be done in order to complete the query",
+        client = client, 
+        model = model,
+        temperature = 0.0
+    )
+    #TaskList = OrchestratorAgentExample.call("Can you collect all of the jobs from the feature search database that ave been built in 2024")
+    #print(TaskList.model_dump_json(indent = 2))
+
+    TrueFalseTool = BinaryDecisionAgentExample.as_tool(name = "TrueFalse", description="Decides if a statement is true or false")
+    chatbot = ChatAgent(
+        system_prompt = "You must decide if the user is telling the truth or a lie. use your tool to see if the user is lying, if they are tell them they're a liar. if not say you trust them.",
+        client = client,
+        model = model,
+        temperature = 0.2,
+        tools = TrueFalseTool)
+
+    print("----Agents as tool and tool stream test----")
+    response = chatbot.call("Was pocahontas a real person?", stream = True)
+    for token in response:
+        print(token, end="", flush=True)
