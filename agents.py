@@ -16,6 +16,8 @@ logger.addHandler(logging.NullHandler())
 #TODO: OrchestratorAgent
     # Implement OrchestratorAgent class
     # Finish Implementation
+#TODO: TaskAgent
+    # Implement TaskAgent class
 #TODO: Update Tool handling, currently has a hard limit for number of tool calls
     # Implement dynamic tool call handling
 #TODO: Add as tool method to BaseAgent to allow agents to be used as tools in other agents
@@ -98,6 +100,20 @@ class Function(Tool):
         super().__init__(function = function, tool_type = "function", name=name, description=description, parameters=parameters)
  
 class Task(BaseModel):
+    """
+        A Pydantic BaseModel representing a task that can be assigned to an agent.
+        Attributes:
+            description (str): A description of the task that needs to be done.
+            information (str): Additional information or context supplied to complete the task.
+            status (str): Completion status of the task. Defaults to "pending".
+            assigned (Optional[str]): Agent assigned to complete the task.
+            dependencies (Optional[list]): List of dependencies.
+            result (Optional[Any]): The output or result produced after task execution. Defaults to None.
+        Methods:
+            mark_complete(): Updates the task status to "completed".
+            mark_in_progress(): Updates the task status to "in-progress".
+            mark_waiting(): Updates the task status to "waiting".
+    """
     description: str = Field(...,description="A description of the task that needs to be done.")
     information: str = Field(...,description="Additional information or context supplied to complete the task.")
     status: str = Field(default="pending",description="Completion status of the task.")
@@ -105,20 +121,28 @@ class Task(BaseModel):
     dependencies: Optional[list] = Field(...,description="List of dependencies.")
     result: Optional[Any] = Field(default=None, description="The output or result produced after task execution.")
 
-    def mark_complete():
+    def mark_complete(self):
         self.status = "completed"
 
-    def mark_in_progress():
+    def mark_in_progress(self):
         self.status = "in-progress"    
     
-    def mark_waiting():
+    def mark_waiting(self):
         self.status = "waiting"
 
 class TaskList(BaseModel):
-        """
-            List of tasks fo agent to populate.
-        """
-        tasks: List[Task] = Field(default_factory=dict,description="A dictionary containing a list of tasks as the key, and description of the task as the value")
+    """
+        A Pydantic BaseModel that represents a collection of tasks.
+
+        Attributes:
+            tasks (List[Task]): A list of Task objects to be populated by an agent.
+                Each task contains information about a specific action or work item
+                to be performed.
+
+        Example:
+            task_list = TaskList(tasks=[task1, task2, task3])
+    """
+    tasks: List[Task] = Field(default_factory=dict,description="A dictionary containing a list of tasks as the key, and description of the task as the value")
 
 # ---------------------------------------------------------- Agent Classes ----------------------------------------------------------
 class BaseAgent:
@@ -156,8 +180,30 @@ class BaseAgent:
 
     def chat(self, message: str, history: list[dict] = []):
         """
-            Chat method to handle message calls to the llm using the prompt as initialized.
-            Allows for history to be passed in as a list of dicts with role and content keys
+            Chat method to handle message calls to the LLM using the initialized prompt.
+            This method supports both streaming and non-streaming modes. It maintains conversation
+            history and can invoke tools/function calls when needed.
+            Args:
+                message (str): The user message to send to the LLM.
+                history (list[dict], optional): Conversation history as a list of dictionaries with 
+                    'role' and 'content' keys. Defaults to an empty list.
+            Returns:
+                str or Generator: 
+                    - If streaming is disabled: Returns the LLM response as a string.
+                    - If streaming is enabled: Returns a generator that yields response chunks as strings.
+                    - If a tool call is made: Handles the tool invocation and returns the tool response
+                    or subsequent LLM response.
+            Raises:
+                Logs API calls with the formatted messages for debugging purposes.
+
+            Examples:
+                Non-streaming:
+                    response = agent.chat("What is 2+2?")
+                    print(response)
+                Streaming:
+                    response_generator = agent.chat("Explain quantum computing")
+                    for chunk in response_generator:
+                        print(chunk, end='', flush=True)
         """
         
         messages = [{"role":"system","content":self.system_prompt}] + history + [{"role":"user","content":message}]
@@ -207,7 +253,18 @@ class BaseAgent:
             
     def call(self, message: str):
         """
-            Single message call to the llm using the prompt as initialized.
+            Execute a single message call to the language model using the initialized prompt.
+
+            Args:
+                message (str): The input message to send to the language model.
+
+            Returns:
+                The response from the language model for the given message.
+
+            Note:
+                This method initializes an empty conversation history for each call,
+                meaning each invocation is independent and does not retain context
+                from previous messages.
         """
         logging.info(f"Agent Called with {message}")
         return self.chat(message=message, history=[])
@@ -270,7 +327,25 @@ class BaseAgent:
 
     def as_tool(self, name: str, description: str, parameters: dict = None):
         """
-            Return the agent as a tool for use in other agents.
+            Convert the agent into a reusable tool for integration with other agents.
+            This method wraps the agent's call functionality as a Function object that can be
+            invoked by other agents. It allows the agent to be used as a composable component
+            in multi-agent systems.
+            Args:
+                name (str): The name of the tool. Used to identify the tool when called by other agents.
+                description (str): A human-readable description of what the tool does. Used by agents
+                    to understand when and how to use this tool.
+                parameters (dict, optional): A JSON Schema dictionary defining the tool's input parameters.
+                    If not provided, defaults to a single "message" string parameter.
+                    Expected structure:
+                    {
+                            "<param_name>": {"type": "<type>", "description": "<description>"},
+                            ...
+                        "required": ["<param_name>", ...]
+            Returns:
+                Function: A Function object representing this agent as a tool, containing the agent's
+                    call method, name, description, and parameter schema. Can be passed to other
+                    agents for invocation.
         """
         if not parameters:
             parameters = {
@@ -283,6 +358,29 @@ class BaseAgent:
         return Function(function=self.call, name=name, description=description, parameters=parameters)
     
     def _check_and_handle_tool_call(self, response, messages):
+        """
+            Check if the model response contains tool calls and handle them iteratively.
+            
+            This method processes tool calls from the model response, executes the requested tools,
+            and re-invokes the model with tool results until no more tool calls are needed or the
+            tool call limit is reached.
+            
+            Args:
+                response: The model response object containing finish_reason and message data.
+                messages (list): The conversation message history, with the last message being the tool call request.
+            
+            Returns:
+                The final model response object after all tool calls have been processed and resolved,
+                or None if the initial response does not contain tool calls.
+            
+            Raises:
+                json.JSONDecodeError: If tool arguments cannot be parsed as valid JSON.
+            
+            Notes:
+                - Logs information about called tools and errors for invalid tool references.
+                - Respects the tool_call_limit to prevent infinite loops.
+                - Maintains conversation context by building a tool_messages list throughout execution.
+        """
         if response.choices[0].finish_reason == "tool_calls": #if no tool is called return None and pass checks
             tool_messages = [messages[-1]] #creata a tool messages list that will just contain the context of the previous message and the tool call request & answers
             tool_calls = 0
@@ -310,6 +408,27 @@ class BaseAgent:
         return None
 
     def  __handle_tool_call(self,responses, messages):
+        def __handle_tool_call(self, responses, messages):
+            """
+            Handle tool calls from the LLM by executing the requested tools and returning responses.
+            This method processes tool calls made by the language model, executes the corresponding
+            tools with the provided arguments, and returns the model's response to the tool outputs.
+            Args:
+                responses: A list of tool call response objects from the LLM, each containing
+                          an id, type, and function details (name and arguments).
+                messages: The conversation message history, with the last message being the
+                         context for the tool call request.
+            Returns:
+                A streaming chat completion response from the API after processing all tool calls
+                and sending the results back to the model.
+            Raises:
+                json.JSONDecodeError: If tool call or argument strings cannot be parsed as JSON.
+            Note:
+                - Constructs messages in the format expected by OpenAI's API.
+                - Logs an error if a requested tool does not exist in the tool_dict.
+                - Returns an error message to the model if a tool cannot be found.
+                - Streaming is enabled for the returned response.
+            """
         tool_messages = [messages[-1]] #creat a tool messages list that will just contain the context of the previous message and the tool call request & answers
         #construct tool call message from response
         tool_calls = [{"id":response.id,"type":response.type,"function":{"name":response.function.name,"arguments":response.function.arguments}} for response in responses]
@@ -455,9 +574,8 @@ class BinaryDecisionAgent(StructuredOutputAgent):
         response = super().call(message)
         return response.value
 
-#This might just be an implementation of a list creator, might rename as necessary. orchestrator shouldnt output lists.
-class OrchestratorAgent(StructuredOutputAgent):
-
+class OrchestratorAgent(StructuredOutputAgent): #TODO: Finish Implementation
+    #This might just be an implementation of a list creator, might rename as necessary. orchestrator shouldnt output lists.
     def check_list(self):
         return self.task_list.tasks
 
@@ -476,7 +594,7 @@ class OrchestratorAgent(StructuredOutputAgent):
         self.task_list = super().call(message)
         return self.task_list
        
-class TaskAgent:
+class TaskAgent: #TODO: Finish Implementation
     """
         A wrapper class that takes an agent and a task
     """
