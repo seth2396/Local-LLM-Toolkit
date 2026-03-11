@@ -50,8 +50,16 @@ class ChromaVectorStore(BaseVectorStore):
         self.client = client
         self.embedder = embedder
         self.collection = self.client.get_or_create_collection(name=collection_name)
-
         
+    def get_collection(self, collection_name: str, collection_location: str = "./ChromaVectorStore"):
+        try:
+            client = chromadb.PersistentClient(collection_location)
+        except Exception as e:
+            print(f"Error initializing ChromaDB PersistentClient: {e}")
+            raise e
+
+        return client.get_collection(name=collection_name)
+
     def add(self, content: list[str] | str, embedding_content: list[str] | str = None, metadata: list[dict] | dict = None) -> None:
         #Id looks like it is just assigned by position of list. Might be good to refine it so that it is more precise. 
         current_row_count = self.count()
