@@ -1,9 +1,9 @@
 from .Chunk import Chunk
 from .BaseChunkStrategy import BaseChunkStrategy, _DEFAULT_CHUNK_SIZE, _DEFAULT_OVERLAP
-from loaders import Document
+from ..loaders import Document
 
 
-class FixedSizeChunkStrategy(BaseChunkStrategy):
+class FixedSizeChunk(BaseChunkStrategy):
     """
         Chunking strategy that splits text into fixed-size segments with optional overlap.
 

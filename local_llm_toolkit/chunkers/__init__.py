@@ -1,6 +1,6 @@
 from .Chunk import Chunk
 from .BaseChunkStrategy import BaseChunkStrategy
-from .FixedSizeChunkStrategy import FixedSizeChunkStrategy
+from .FixedSizeChunk import FixedSizeChunk
 from .RecursiveChunk import RecursiveChunk
 from .SemanticChunk import SemanticChunk
 from .LLMChunk import LLMChunk

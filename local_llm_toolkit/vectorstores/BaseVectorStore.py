@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-from embedders import BaseEmbedder
-from chunkers import Chunk
+from ..embedders import BaseEmbedder
+from ..chunkers import Chunk
 
 
 class BaseVectorStore(ABC):

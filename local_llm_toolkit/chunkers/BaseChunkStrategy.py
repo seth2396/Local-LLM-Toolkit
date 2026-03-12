@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 from .Chunk import Chunk
-from loaders import Document
+from ..loaders import Document
 
 _DEFAULT_CHUNK_SIZE = 500
 _DEFAULT_OVERLAP = 100

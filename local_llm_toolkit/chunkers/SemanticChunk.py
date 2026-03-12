@@ -3,8 +3,8 @@ import re
 from .BaseChunkStrategy import _DEFAULT_CHUNK_SIZE
 from .Chunk import Chunk
 from .RecursiveChunk import RecursiveChunk
-from embedders import BaseEmbedder
-from loaders import Document
+from ..embedders import BaseEmbedder
+from ..loaders import Document
 
 
 class SemanticChunk(RecursiveChunk):

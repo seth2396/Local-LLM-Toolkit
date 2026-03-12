@@ -1,8 +1,10 @@
 import chromadb
 
-from embedders import BaseEmbedder
-from chunkers import Chunk
+from ..embedders import BaseEmbedder
+from ..chunkers import Chunk
 from .BaseVectorStore import BaseVectorStore
+
+from typing import Optional
 
 
 class ChromaVectorStore(BaseVectorStore):
@@ -74,25 +76,85 @@ class ChromaVectorStore(BaseVectorStore):
 
         self.collection.add(ids=ids, documents=content, embeddings=embedded_texts, metadatas=metadata)
 
-    def query(self, query: str, top_k: int = 5, include: list[str] = ['documents']) -> list[dict]:
-        """
-            Query the vector database:
 
-            parameters:
-                query: String to query against
-                top_k: number of results to return
-                include: Type of results to return ['ids', 'documents', 'metadatas', 'embeddings'] default = ['documents']
-
-            returns:
-                {ids: List[ID]
-                embeddings: Optional[Embeddings],
-                documents: Optional[List[Document]],
-                metadatas: Optional[List[Metadata]]
-                included: Include}
+    def query(
+        self,
+        query: str,
+        top_k: int = 5,
+        include: Optional[list[str]] = None,
+        max_distance: float = 1.0,
+        overfetch: float = 1.0,  # float multiplier
+    ) -> list[dict]:
         """
+        Query the vector database and filter results by distance threshold.
+
+        Args:
+            query: text query
+            top_k: number of results to return (after filtering)
+            include: fields to return ['ids','documents','metadatas','embeddings','distances']
+            max_distance: keep results where distance <= max_distance
+            overfetch: multiplier for initial retrieval; may be float.
+                      n_results is computed by rounding to nearest int.
+
+        Returns:
+            List[dict] hits sorted by distance asc, filtered by max_distance.
+        """
+        if top_k <= 0:
+            return []
+
+        if include is None:
+            include = ["documents"]
+
+        # Don't mutate caller list
+        include = list(include)
+
+        # Ensure distances present for filtering
+        if "distances" not in include:
+            include.append("distances")
+
+        # Compute n_results as an int from float overfetch
+        # Round to nearest int, then clamp to at least top_k
+        n_results = int(round(top_k * float(overfetch)))
+        n_results = max(top_k, n_results, 1)
+
         embedded_query = self.embedder.embed(query)
-        results = self.collection.query(query_embeddings=embedded_query, n_results=top_k, include=include)
-        return results
+
+        results = self.collection.query(
+            query_embeddings=embedded_query,
+            n_results=n_results,
+            include=include,
+        )
+
+        # Chroma returns list-of-lists for single query: [ [...hits...] ]
+        distances = results.get("distances", [[]])[0] or []
+
+        hits = []
+        num_hits = len(distances)
+
+        for i in range(num_hits):
+            d = distances[i]
+            if d is None or d > max_distance:
+                continue
+
+            hit = {"distance": d}
+
+            # Add requested fields (where present)
+            if "ids" in results and results["ids"] is not None:
+                hit["id"] = results["ids"][0][i]
+            if "documents" in results and results["documents"] is not None:
+                hit["document"] = results["documents"][0][i]
+            if "metadatas" in results and results["metadatas"] is not None:
+                hit["metadata"] = results["metadatas"][0][i]
+            if "embeddings" in results and results["embeddings"] is not None:
+                hit["embedding"] = results["embeddings"][0][i]
+
+            hits.append(hit)
+
+        # Sort by distance (smaller is closer for typical distance metrics)
+        hits.sort(key=lambda x: x["distance"])
+
+        return hits[:top_k]
+
 
     def count(self) -> int:
         """Returns the total number of entries in the collection."""

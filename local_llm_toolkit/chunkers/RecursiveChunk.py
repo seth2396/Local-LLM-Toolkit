@@ -1,7 +1,7 @@
 from .BaseChunkStrategy import BaseChunkStrategy, _DEFAULT_CHUNK_SIZE, _DEFAULT_OVERLAP
 from .Chunk import Chunk
-from .FixedSizeChunkStrategy import FixedSizeChunkStrategy
-from loaders import Document
+from .FixedSizeChunk import FixedSizeChunk
+from ..loaders import Document
 
 
 class RecursiveChunk(BaseChunkStrategy):
@@ -88,7 +88,7 @@ class RecursiveChunk(BaseChunkStrategy):
 
     def _character_split(self, text: str) -> list[str]:
         """Last resort: split by fixed character count with no separator."""
-        return FixedSizeChunkStrategy(max_tokens=self.max_tokens, overlap_tokens=0).split_text(text)
+        return FixedSizeChunk(max_tokens=self.max_tokens, overlap_tokens=0).split_text(text)
 
     def _apply_overlap(self, chunks: list[str]) -> list[str]:
         """Prepend the tail of the previous chunk to each subsequent chunk."""

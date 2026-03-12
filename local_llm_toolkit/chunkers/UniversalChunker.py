@@ -1,8 +1,9 @@
+from ..loaders import Document
+from ..embedders import BaseEmbedder
+
 from .BaseChunkStrategy import BaseChunkStrategy
 from .Chunk import Chunk
-from loaders import Document
-from embedders import BaseEmbedder
-from .FixedSizeChunkStrategy import FixedSizeChunkStrategy
+from .FixedSizeChunk import FixedSizeChunk
 from .RecursiveChunk import RecursiveChunk
 from .SemanticChunk import SemanticChunk
 from .LLMChunk import LLMChunk
@@ -10,7 +11,7 @@ from .TableChunk import TableChunk
 
 
 STRATEGY_REGISTRY = {
-    "fixed": FixedSizeChunkStrategy,
+    "fixed": FixedSizeChunk,
     "recursive": RecursiveChunk,
     "semantic": SemanticChunk,
     "llm": LLMChunk,
@@ -18,12 +19,12 @@ STRATEGY_REGISTRY = {
 }
 
 DEFAULT_STRATEGY_FOR_TYPE = {
-    '.pdf': FixedSizeChunkStrategy,
-    '.docx': FixedSizeChunkStrategy,
-    '.txt': FixedSizeChunkStrategy,
-    '.md': FixedSizeChunkStrategy,
-    '.html': FixedSizeChunkStrategy,
-    '.json': RecursiveChunk,
+    '.pdf': SemanticChunk,
+    '.docx': SemanticChunk,
+    '.txt': RecursiveChunk,
+    '.md': RecursiveChunk,
+    '.html': FixedSizeChunk,
+    '.json': FixedSizeChunk,
     '.csv': TableChunk,
     '.xlsx': TableChunk
 }

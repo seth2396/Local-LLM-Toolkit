@@ -1,6 +1,6 @@
 from .BaseChunkStrategy import BaseChunkStrategy
 from .Chunk import Chunk
-from loaders import Document
+from ..loaders import Document
 
 
 class TableChunk(BaseChunkStrategy):

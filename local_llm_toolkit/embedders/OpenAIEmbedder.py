@@ -7,14 +7,14 @@ class OpenAIEmbedder(BaseEmbedder):
         Embedder using OpenAI's embedding models.
         Default model is "text-embedding-3-small".
     """
-    def __init__(self, model_name: str, api_key: str):
-        self.model_name = model_name
+    def __init__(self, model: str, api_key: str):
+        self.model = model
         self.api_key = api_key
 
     def embed(self, text: str) -> list[float]:
         client = OpenAI(api_key=self.api_key)
         response = client.embeddings.create(
-            model=self.model_name,
+            model=self.model,
             input=[text]
         )
         return response.data[0].embedding
@@ -22,7 +22,7 @@ class OpenAIEmbedder(BaseEmbedder):
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         client = OpenAI(api_key=self.api_key)
         response = client.embeddings.create(
-            model=self.model_name,
+            model=self.model,
             input=texts
         )
         return [item.embedding for item in response.data]
