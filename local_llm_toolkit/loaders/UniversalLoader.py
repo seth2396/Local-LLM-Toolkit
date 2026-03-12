@@ -1,5 +1,5 @@
 from .Document import Document
-from ..ingester import FileItem
+from ..ingesters import FileItem
 
 from .BaseLoader import BaseLoader
 
@@ -13,13 +13,17 @@ ALL_SUPPORTED_FORMATS = list(SUPPORTED_TEXT_FORMATS) + list(SUPPORTED_DATA_FORMA
 
 
 class UniversalLoader(BaseLoader):
-    f"""
-    A unified loader class to handle loading of various document formats.
-    Currently supported formats: {', '.join(ALL_SUPPORTED_FORMATS)}
+    """
+    Unified loader that dispatches to the appropriate loader based on file extension.
+
+    Merges all registered loaders from text, data, image, and code modules.
+    Supported formats are the union of all LOADERS dicts — see each submodule
+    for what is currently implemented vs. stubbed.
     """
     LOADERS = _TEXT_LOADERS | _DATA_LOADERS | _IMAGE_LOADERS | _CODE_LOADERS
 
-    def load(self, file:FileItem) -> Document:
+    def load(self, file: FileItem) -> Document:
+        """Select and invoke the appropriate loader for the file's extension."""
         ext = file.ext
         if ext in self.LOADERS:
             loader_class = self.LOADERS[ext]

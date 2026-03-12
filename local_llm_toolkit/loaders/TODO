@@ -1,2 +1,0 @@
-Make sure loaders close their file context once information is extracted. 
-Add a load_documents method or reconfigure load to accept multiple files

@@ -7,7 +7,7 @@ _DEFAULT_CHUNK_SIZE = 500
 _DEFAULT_OVERLAP = 100
 
 
-class BaseChunkStrategy(ABC):
+class BaseChunker(ABC):
     """
         Abstract base class for text chunking strategies.
 
@@ -22,4 +22,16 @@ class BaseChunkStrategy(ABC):
 
     @abstractmethod
     def chunk(self, document: Document) -> list[Chunk]:
-        pass
+        """
+        Split a document into a list of Chunk objects.
+
+        Args:
+            document: Document to chunk. Content must be a string or convertible to one.
+
+        Returns:
+            list[Chunk]: Ordered chunks with the document's metadata attached to each.
+        """
+
+    def chunk_documents(self, documents: list[Document]) -> list[list[Chunk]]:
+        """Chunk each document in the list, returning one chunk list per document."""
+        return [self.chunk(document) for document in documents]

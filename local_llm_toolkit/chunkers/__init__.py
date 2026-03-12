@@ -1,5 +1,5 @@
 from .Chunk import Chunk
-from .BaseChunkStrategy import BaseChunkStrategy
+from .BaseChunker import BaseChunker
 from .FixedSizeChunk import FixedSizeChunk
 from .RecursiveChunk import RecursiveChunk
 from .SemanticChunk import SemanticChunk

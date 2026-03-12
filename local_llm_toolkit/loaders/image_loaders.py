@@ -4,22 +4,30 @@ from .Document import Document
 from .BaseLoader import BaseLoader
 
 
-class JPEGLoader(BaseLoader):  # Not implemented yet
+class JPEGLoader(BaseLoader):
+    """Loads JPEG image files (.jpeg). Not yet implemented."""
+
     def load(self, file) -> Document:
         raise NotImplementedError("Doc type ending with .jpeg not yet implemented.")
 
 
-class PNGLoader(BaseLoader):  # Not implemented yet
+class PNGLoader(BaseLoader):
+    """Loads PNG image files (.png). Not yet implemented."""
+
     def load(self, file) -> Document:
         raise NotImplementedError("Doc type ending with .png not yet implemented.")
 
 
-class GIFLoader(BaseLoader):  # Not implemented yet
+class GIFLoader(BaseLoader):
+    """Loads GIF image files (.gif). Not yet implemented."""
+
     def load(self, file) -> Document:
         raise NotImplementedError("Doc type ending with .gif not yet implemented.")
 
 
-class BMPLoader(BaseLoader):  # Not implemented yet
+class BMPLoader(BaseLoader):
+    """Loads BMP image files (.bmp). Not yet implemented."""
+
     def load(self, file) -> Document:
         raise NotImplementedError("Doc type ending with .bmp not yet implemented.")
 
@@ -29,9 +37,11 @@ SUPPORTED_IMAGE_FORMATS = _IMAGE_LOADERS.keys()
 
 
 class ImageLoader:
-    f"""
-    A loader class to handle loading of various image document formats.
-    Currently supported formats: {', '.join(SUPPORTED_IMAGE_FORMATS)}
+    """
+    Dispatcher that routes an image file to the appropriate loader by extension.
+
+    Supported formats are defined in LOADERS (.jpeg, .png, .gif, .bmp).
+    Note: all individual loaders are stubs and not yet implemented.
     """
     LOADERS = _IMAGE_LOADERS
 

@@ -4,27 +4,37 @@ import pandas as pd
 
 from .Document import Document
 from .BaseLoader import BaseLoader
+from ..ingesters import FileItem
 
 
 class JSONLoader(BaseLoader):
-    def load(self, file) -> Document:
-        document = Document(file)
-        with open(file.path, 'r', encoding='utf-8') as f:
+    """Loads JSON files, storing the parsed Python object as document content."""
+
+    def load(self, item: FileItem) -> Document:
+        """Parse a JSON file and store the resulting object in document.content."""
+        document = Document(item)
+        with open(item.path, 'r', encoding='utf-8') as f:
             document.content = json.load(f)
         return document
 
 
 class CSVLoader(BaseLoader):
-    def load(self, file) -> Document:
-        document = Document(file)
-        document.content = pd.read_csv(file.path)
+    """Loads CSV files into a pandas DataFrame stored as document content."""
+
+    def load(self, item: FileItem) -> Document:
+        """Read a CSV file into a DataFrame and store it in document.content."""
+        document = Document(item)
+        document.content = pd.read_csv(item.path)
         return document
 
 
 class ExcelLoader(BaseLoader):
-    def load(self, file) -> Document:
-        document = Document(file)
-        document.content = pd.read_excel(file.path)
+    """Loads Excel files (.xlsx) into a pandas DataFrame stored as document content."""
+
+    def load(self, item: FileItem) -> Document:
+        """Read the first sheet of an Excel file into a DataFrame and store it in document.content."""
+        document = Document(item)
+        document.content = pd.read_excel(item.path)
         return document
 
 
@@ -37,9 +47,10 @@ SUPPORTED_DATA_FORMATS = _DATA_LOADERS.keys()
 
 
 class DataLoader:
-    f"""
-    A loader class to handle loading of various data document formats.
-    Currently supported formats: {', '.join(SUPPORTED_DATA_FORMATS)}
+    """
+    Dispatcher that routes a file to the appropriate data loader by extension.
+
+    Supported formats are defined in LOADERS (.json, .csv, .xlsx).
     """
     LOADERS = _DATA_LOADERS
 

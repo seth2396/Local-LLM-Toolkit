@@ -1,11 +1,14 @@
-from .BaseChunkStrategy import BaseChunkStrategy
+from .BaseChunker import BaseChunker
 from .Chunk import Chunk
 from ..loaders import Document
 
 
-class LLMChunk(BaseChunkStrategy):
+class LLMChunk(BaseChunker):
     """
-        LLM based chunker - Not yet implemented.
+    Chunking strategy that uses an LLM to determine semantically meaningful boundaries.
+
+    Not yet implemented. Intended to prompt a language model to identify natural
+    split points in the document rather than relying on fixed rules or embeddings.
     """
     def __init__(self):
         raise NotImplementedError("LLM-based chunking not yet implemented")

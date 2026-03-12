@@ -2,30 +2,41 @@ from pathlib import Path
 
 from .Document import Document
 from .BaseLoader import BaseLoader
+from ..ingesters import FileItem
 
 
-class PythonLoader(BaseLoader):  # Not implemented yet
-    def load(self, file) -> Document:
+class PythonLoader(BaseLoader):
+    """Loads Python source files (.py). Not yet implemented."""
+
+    def load(self, item: FileItem) -> Document:
         raise NotImplementedError("Doc type ending with .py not yet implemented.")
 
 
-class JavaScriptLoader(BaseLoader):  # Not implemented yet
-    def load(self, file) -> Document:
+class JavaScriptLoader(BaseLoader):
+    """Loads JavaScript source files (.js). Not yet implemented."""
+
+    def load(self, item: FileItem) -> Document:
         raise NotImplementedError("Doc type ending with .js not yet implemented.")
 
 
-class JavaLoader(BaseLoader):  # Not implemented yet
-    def load(self, file) -> Document:
+class JavaLoader(BaseLoader):
+    """Loads Java source files (.java). Not yet implemented."""
+
+    def load(self, item: FileItem) -> Document:
         raise NotImplementedError("Doc type ending with .java not yet implemented.")
 
 
-class CppLoader(BaseLoader):  # Not implemented yet
-    def load(self, file) -> Document:
+class CppLoader(BaseLoader):
+    """Loads C++ source files (.cpp). Not yet implemented."""
+
+    def load(self, item: FileItem) -> Document:
         raise NotImplementedError("Doc type ending with .cpp not yet implemented.")
 
 
-class CSharpLoader(BaseLoader):  # Not implemented yet
-    def load(self, file) -> Document:
+class CSharpLoader(BaseLoader):
+    """Loads C# source files (.cs). Not yet implemented."""
+
+    def load(self, item: FileItem) -> Document:
         raise NotImplementedError("Doc type ending with .cs not yet implemented.")
 
 
@@ -34,9 +45,11 @@ SUPPORTED_CODE_FORMATS = _CODE_LOADERS.keys()
 
 
 class CodeLoader:
-    f"""
-    A loader class to handle loading of various code document formats.
-    Currently supported formats: {', '.join(SUPPORTED_CODE_FORMATS)}
+    """
+    Dispatcher that routes a source file to the appropriate code loader by extension.
+
+    Supported formats are defined in LOADERS (.py, .js, .java, .cpp, .cs).
+    Note: all individual loaders are stubs and not yet implemented.
     """
     LOADERS = {
         '.py': PythonLoader,

@@ -1,6 +1,6 @@
 import re
 
-from .BaseChunkStrategy import _DEFAULT_CHUNK_SIZE
+from .BaseChunker import _DEFAULT_CHUNK_SIZE
 from .Chunk import Chunk
 from .RecursiveChunk import RecursiveChunk
 from ..embedders import BaseEmbedder
@@ -35,6 +35,22 @@ class SemanticChunk(RecursiveChunk):
         self.breakpoint_threshold = breakpoint_threshold
 
     def chunk(self, document: Document) -> list[Chunk]:
+        """
+        Split a document into semantically coherent chunks.
+
+        Sentences are extracted, embedded, and compared pairwise. A chunk boundary
+        is inserted wherever cosine similarity drops below breakpoint_threshold.
+        Groups that exceed max_tokens are further split by character count.
+
+        Args:
+            document: Document to chunk. Content must be a string or convertible to one.
+
+        Returns:
+            list[Chunk]: Semantically grouped chunks with the document's metadata attached.
+
+        Raises:
+            ValueError: If document.content cannot be converted to a string.
+        """
         if not isinstance(document.content, str):
             try:
                 text = str(document.content)

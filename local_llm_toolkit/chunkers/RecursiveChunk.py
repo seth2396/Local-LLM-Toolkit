@@ -1,24 +1,24 @@
-from .BaseChunkStrategy import BaseChunkStrategy, _DEFAULT_CHUNK_SIZE, _DEFAULT_OVERLAP
+from .BaseChunker import BaseChunker, _DEFAULT_CHUNK_SIZE, _DEFAULT_OVERLAP
 from .Chunk import Chunk
 from .FixedSizeChunk import FixedSizeChunk
+from .separators import SEPARATORS_BY_DOCTYPE
 from ..loaders import Document
 
 
-class RecursiveChunk(BaseChunkStrategy):
+class RecursiveChunk(BaseChunker):
     """
         Chunking strategy that recursively splits text using progressively smaller
         separators until all chunks fit within max_tokens.
 
-        Split order: paragraphs → lines → sentences → words → characters.
+        Separators are resolved from the document's doctype via SEPARATORS_BY_DOCTYPE
+        at chunk time. Pass separators explicitly to override the doctype-based lookup.
 
         Attributes:
             max_tokens (int): Maximum number of characters per chunk.
             overlap_tokens (int): Number of characters to overlap between chunks.
-            separators (list[str]): Ordered list of separators to try. Defaults to
-                ["\n\n", "\n", ". ", "? ", "! ", " ", ""].
+            separators (list[str] | None): Override separator list. If None, resolved
+                from the document's doctype at chunk time.
     """
-
-    DEFAULT_SEPARATORS = ["\n\n", "\n", ". ", "? ", "! ", " ", ""]
 
     def __init__(
         self,
@@ -28,9 +28,24 @@ class RecursiveChunk(BaseChunkStrategy):
     ):
         self.max_tokens = max_tokens
         self.overlap_tokens = overlap_tokens
-        self.separators = separators or self.DEFAULT_SEPARATORS
+        self.separators = separators
 
     def chunk(self, document: Document) -> list[Chunk]:
+        """
+        Split a document into chunks using recursive separator-based splitting.
+
+        Separators are resolved from the document's doctype via SEPARATORS_BY_DOCTYPE
+        unless overridden at construction time. Overlap is applied after splitting.
+
+        Args:
+            document: Document to chunk. Content must be a string or convertible to one.
+
+        Returns:
+            list[Chunk]: Ordered chunks with the document's metadata attached to each.
+
+        Raises:
+            ValueError: If document.content cannot be converted to a string.
+        """
         if not isinstance(document.content, str):
             try:
                 text = str(document.content)
@@ -43,7 +58,12 @@ class RecursiveChunk(BaseChunkStrategy):
         else:
             text = document.content
 
-        pieces = self._split(text, self.separators)
+        separators = self.separators or SEPARATORS_BY_DOCTYPE.get(
+            document.metadata.get("doctype", "default"),
+            SEPARATORS_BY_DOCTYPE["default"]
+        )
+
+        pieces = self._split(text, separators)
         pieces = self._apply_overlap(pieces)
         return [Chunk(content=piece, metadata=document.metadata) for piece in pieces]
 
@@ -91,7 +111,12 @@ class RecursiveChunk(BaseChunkStrategy):
         return FixedSizeChunk(max_tokens=self.max_tokens, overlap_tokens=0).split_text(text)
 
     def _apply_overlap(self, chunks: list[str]) -> list[str]:
-        """Prepend the tail of the previous chunk to each subsequent chunk."""
+        """
+        Prepend the tail of the previous chunk to each subsequent chunk.
+
+        Overlap length is controlled by self.overlap_tokens. The first chunk is
+        returned unchanged. No-ops when overlap_tokens <= 0 or there is only one chunk.
+        """
         if self.overlap_tokens <= 0 or len(chunks) <= 1:
             return chunks
 

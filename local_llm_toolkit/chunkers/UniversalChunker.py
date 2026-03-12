@@ -1,7 +1,7 @@
 from ..loaders import Document
 from ..embedders import BaseEmbedder
 
-from .BaseChunkStrategy import BaseChunkStrategy
+from .BaseChunker import BaseChunker
 from .Chunk import Chunk
 from .FixedSizeChunk import FixedSizeChunk
 from .RecursiveChunk import RecursiveChunk
@@ -30,12 +30,38 @@ DEFAULT_STRATEGY_FOR_TYPE = {
 }
 
 
-class UniversalChunker(BaseChunkStrategy):
+class UniversalChunker(BaseChunker):
+    """
+    Chunker that automatically selects a strategy based on the document's file extension.
+
+    Uses DEFAULT_STRATEGY_FOR_TYPE to pick the appropriate chunking class, or accepts
+    a caller-supplied chunk_strategy dict to override the defaults per extension.
+    SemanticChunk is only available when an embedder is provided at construction time.
+
+    Attributes:
+        embedder (BaseEmbedder | None): Required when SemanticChunk may be selected.
+            Pass None to disable semantic chunking.
+    """
 
     def __init__(self, embedder: BaseEmbedder = None):
         self.embedder = embedder
 
     def chunk(self, document: Document, chunk_strategy: dict = None) -> list[Chunk]:
+        """
+        Chunk a document using the strategy appropriate for its file extension.
+
+        Args:
+            document: Document to chunk. Must have 'extension' in its metadata.
+            chunk_strategy: Optional mapping of file extension to strategy name
+                (a key from STRATEGY_REGISTRY) to override the defaults.
+
+        Returns:
+            list[Chunk]: Chunks produced by the selected strategy.
+
+        Raises:
+            NotImplementedError: If the extension has no matching strategy.
+            ValueError: If SemanticChunk is selected but no embedder was provided.
+        """
         extension = document.metadata['extension']
         if chunk_strategy and extension in chunk_strategy:
             strategy = STRATEGY_REGISTRY[chunk_strategy[extension]]

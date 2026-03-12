@@ -138,15 +138,16 @@ class ChromaVectorStore(BaseVectorStore):
 
             hit = {"distance": d}
 
-            # Add requested fields (where present)
-            if "ids" in results and results["ids"] is not None:
-                hit["id"] = results["ids"][0][i]
-            if "documents" in results and results["documents"] is not None:
-                hit["document"] = results["documents"][0][i]
-            if "metadatas" in results and results["metadatas"] is not None:
-                hit["metadata"] = results["metadatas"][0][i]
-            if "embeddings" in results and results["embeddings"] is not None:
-                hit["embedding"] = results["embeddings"][0][i]
+            field_map = {
+                "ids": "id",
+                "documents": "document",
+                "metadatas": "metadata",
+                "embeddings": "embedding",
+            }
+            for chroma_key, hit_key in field_map.items():
+                values = results.get(chroma_key)
+                if values is not None:
+                    hit[hit_key] = values[0][i]
 
             hits.append(hit)
 

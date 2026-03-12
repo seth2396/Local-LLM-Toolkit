@@ -1,18 +1,25 @@
-import os
 import hashlib
+
+from ..ingesters import BaseItem
 
 
 class Document:
-    def __init__(self, file):
-        raw = {
-            "file_name": file.name,
-            "extension": file.ext,
-            "doctype": file.doctype,
-            "base_path": os.path.dirname(file.path),
-            "last_modified": file.modified_ts,
-            "file_size": file.size_bytes,
-        }
-        self.metadata = {k: v for k, v in raw.items() if v is not None}
+    """
+    Represents a loaded document with content and associated metadata.
+
+    Created by a loader from a BaseItem. The content setter automatically
+    recomputes a SHA-256 hash of the content and stores it in
+    metadata["hash_id"], allowing downstream systems to detect changes
+    without re-reading the source.
+
+    Attributes:
+        metadata (dict): Key-value pairs derived from the source item, plus
+            "hash_id" which is updated on every content assignment.
+        content (str): The document's text content.
+    """
+
+    def __init__(self, item: BaseItem):
+        self.metadata = item.to_metadata()
         self.content = ""  # triggers the setter, adds hash_id
 
     @property
@@ -25,19 +32,14 @@ class Document:
         self.metadata["hash_id"] = hashlib.sha256(value.encode("utf-8")).hexdigest()
 
     def __str__(self):
-        """
-        Return a trimmed string representation of the Document.
-        """
         trim_len = min(len(self.content), 100)
-        return f"Document(doctype={self.metadata['doctype']}, metadata={self.metadata}, content='{self.content[:trim_len]}...')"
+        return f"Document(doctype={self.metadata.get('doctype')}, metadata={self.metadata}, content='{self.content[:trim_len]}...')"
 
     def to_dict(self, max_content_len: int = 100) -> dict:
-        """
-            Return a dict representation with trimmed content.
-        """
+        """Return a summary dict, truncating content to max_content_len characters."""
         return {
-            "extension": self.metadata['doctype'],
+            "doctype": self.metadata.get("doctype"),
             "metadata": self.metadata,
             "content": self.content[:max_content_len],
-            "length": len(self.content)
+            "length": len(self.content),
         }
