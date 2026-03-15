@@ -36,7 +36,7 @@ class BaseAgent:
 
     def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, tool_call_limit: int = 5, temperature: float = 0.2, stream: bool = False):
         if not isinstance(client, OpenAI):
-            raise NotImplementedError(f"Current LLM client is not supported. Supported clients are:{"".join(client,"/n")}")
+            raise NotImplementedError(f"Current LLM client is not supported. Supported clients are: {', '.join(BaseAgent.SUPPORTED_CLIENTS)}")
         self.system_prompt = system_prompt
         self.client = client
         self.model = model
@@ -185,7 +185,8 @@ class BaseAgent:
         parts = self.system_prompt.split(inject_point_string)
         if len(parts) - 1 != num_injects:
             raise ValueError("Number of inject placeholders does not match number of injection values.")
-        self.system_prompt = "".join(part + inject_txt for part, inject_txt in zip(parts, inject + [""]))
+        inject_list = inject if isinstance(inject, list) else [inject]
+        self.system_prompt = "".join(part + inject_txt for part, inject_txt in zip(parts, inject_list + [""]))
         response = self.call(message)
         self.system_prompt = prompt_holder_var
 
