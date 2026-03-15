@@ -1,4 +1,5 @@
-from .tools import BaseTool, Tool
+from .tools.BaseTool import BaseTool
+from .tools.Tool import Tool
 from .tasks import Task, TaskList
 from .BaseAgent import BaseAgent
 from .ChatAgent import ChatAgent

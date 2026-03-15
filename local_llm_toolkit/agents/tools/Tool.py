@@ -17,7 +17,7 @@ class Tool(BaseTool):
     Parameters are always wrapped in a JSON Schema object, which is required
     by the OpenAI function-calling API.
 
-    Use Tool.register() as a decorator to create a Tool directly from a typed
+    Use Tool.create() as a decorator to create a Tool directly from a typed
     function without writing the schema by hand.
     """
 
@@ -26,7 +26,7 @@ class Tool(BaseTool):
         super().__init__(function=function, tool_type="function", name=name, description=description, parameters=parameters)
 
     @classmethod
-    def register(cls, description: str = ""):
+    def create(cls, description: str = ""):
         """
         Decorator that converts a typed function into a Tool.
 
@@ -42,7 +42,7 @@ class Tool(BaseTool):
             Tool: A Tool instance wrapping the decorated function.
 
         Example:
-            @Tool.register(description="Search the web for information")
+            @Tool.create(description="Search the web for information")
             def web_search(query: str, max_results: int = 5) -> str:
                 ...
         """

@@ -263,10 +263,10 @@ class BaseAgent:
                     if tool:
                         arguments = json.loads(tool_call.function.arguments)
                         tool_response = tool.call(**arguments)
-                        tool_messages.append({"role": "tool", "content": str(tool_response)})
+                        tool_messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(tool_response)})
                     else:
                         logging.error(f"{tool_call.function.name} was called but does not exist in the tools supplied to the agent.")
-                        tool_messages.append({"role": "tool", "content": "ERROR: invalid request"})
+                        tool_messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "ERROR: invalid request"})
                 response = self.client.chat.completions.create(model=self.model, messages=tool_messages, tools=self.tools)
                 tool_calls += 1
             return response
