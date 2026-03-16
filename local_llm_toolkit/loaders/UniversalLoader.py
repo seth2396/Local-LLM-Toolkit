@@ -24,14 +24,14 @@ class UniversalLoader(BaseLoader):
 
     def load(self, file: FileItem) -> Document:
         """Select and invoke the appropriate loader for the file's extension."""
-        ext = file.ext
-        if ext in self.LOADERS:
-            loader_class = self.LOADERS[ext]
+        extension = file.extension
+        if extension in self.LOADERS:
+            loader_class = self.LOADERS[extension]
             loader = loader_class()
             return loader.load(file)
 
         raise NotImplementedError(
-            f"No loader implemented for file type '{ext}'. "
+            f"No loader implemented for file type '{extension}'. "
             "Please register a loader in Loader.loaders."
         )
 

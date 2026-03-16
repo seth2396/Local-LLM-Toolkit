@@ -33,7 +33,7 @@ class FileItem(BaseItem):
         source:      Absolute path to the file as a string.
         doctype:     Logical type (e.g., 'pdf', 'docx'); 'unknown' if unmapped.
         path:        Absolute path as a Path object.
-        ext:         File extension including the dot (e.g., '.pdf').
+        extension:         File extension including the dot (e.g., '.pdf').
         size_bytes:  File size in bytes.
         modified_ts: Last modified timestamp (Unix epoch seconds).
     """
@@ -41,7 +41,7 @@ class FileItem(BaseItem):
     source: str
     doctype: str
     path: Path
-    ext: str
+    extension: str
     size_bytes: Optional[int] = None
     modified_ts: Optional[float] = None
 
@@ -51,7 +51,7 @@ class FileItem(BaseItem):
             "source": self.source,
             "doctype": self.doctype,
             "path": str(self.path),
-            "ext": self.ext,
+            "extension": self.extension,
             "size_bytes": self.size_bytes,
             "modified_ts": self.modified_ts,
         }.items() if v is not None}
@@ -96,9 +96,9 @@ class FileIngester(BaseIngester):
 
         base_map = doctype_extensions or DEFAULT_DOCTYPE_EXTENSIONS
         self.ext_to_doctype: Dict[str, str] = {
-            ext.lower(): dt.lower()
-            for dt, exts in base_map.items()
-            for ext in exts
+            extension.lower(): dt.lower()
+            for dt, extensions in base_map.items()
+            for extension in extensions
         }
 
     def collect(self) -> List[FileItem]:
@@ -122,8 +122,8 @@ class FileIngester(BaseIngester):
                 if not self.include_hidden and self._is_hidden(p):
                     continue
 
-                ext = p.suffix.lower()
-                doctype = self.ext_to_doctype.get(ext, "unknown")
+                extension = p.suffix.lower()
+                doctype = self.ext_to_doctype.get(extension, "unknown")
 
                 if self.doctype_filter is not None:
                     if doctype == "unknown" or doctype not in self.doctype_filter:
@@ -139,7 +139,7 @@ class FileIngester(BaseIngester):
                     source=str(p),
                     doctype=doctype,
                     path=p,
-                    ext=ext,
+                    extension=extension,
                     size_bytes=stat.st_size,
                     modified_ts=stat.st_mtime,
                 ))

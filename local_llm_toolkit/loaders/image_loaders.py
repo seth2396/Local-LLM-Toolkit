@@ -46,12 +46,12 @@ class ImageLoader:
     LOADERS = _IMAGE_LOADERS
 
     def load(self, file) -> Document:
-        ext = Path(file.path).suffix.lower()
-        if ext in self.LOADERS:
-            loader = self.LOADERS[ext]
+        extension = Path(file.path).suffix.lower()
+        if extension in self.LOADERS:
+            loader = self.LOADERS[extension]
             return loader.load(file.path)
 
         raise NotImplementedError(
-            f"No Image loader implemented for file type '{ext}'. "
+            f"No Image loader implemented for file type '{extension}'. "
             "Please register a loader in ImageLoader.LOADERS."
         )

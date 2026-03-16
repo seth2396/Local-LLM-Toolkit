@@ -36,7 +36,7 @@ class BaseAgent:
 
     def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, tool_call_limit: int = 5, temperature: float = 0.2, stream: bool = False):
         if not isinstance(client, OpenAI):
-            raise NotImplementedError(f"Current LLM client is not supported. Supported clients are:{"".join(client,"/n")}")
+            raise NotImplementedError(f"Current LLM client is not supported. Supported clients are:{"".join(SUPPORTED_CLIENTS,"/n")}")
         self.system_prompt = system_prompt
         self.client = client
         self.model = model
@@ -135,7 +135,7 @@ class BaseAgent:
                 meaning each invocation is independent and does not retain context
                 from previous messages.
         """
-        logging.info(f"Agent Called with {message}")
+        logging.debug(f"Agent Called with message: \n{message}")
         return self.chat(message=message, history=[])
 
     def inject(self, message: str, inject: Union[str, list[str]], inject_point_string: str = "{inject}"):

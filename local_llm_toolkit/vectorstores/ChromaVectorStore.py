@@ -1,9 +1,10 @@
 import chromadb
+from chromadb import Settings
 
 from ..embedders import BaseEmbedder
 from ..chunkers import Chunk
 from .BaseVectorStore import BaseVectorStore
-
+import os
 from typing import Optional
 
 
@@ -28,8 +29,12 @@ class ChromaVectorStore(BaseVectorStore):
                 collection_name: Name of the ChromaDB collection to open or create.
                 client: A pre-built ChromaDB client (EphemeralClient or PersistentClient).
         """
+        
+    
+        os.environ["CHROMA_TELEMETRY_ENABLED"] = "false"
         self.embedder = embedder
         self.collection = client.get_or_create_collection(name=collection_name)
+        
 
     @classmethod
     def ephemeral(cls, embedder: BaseEmbedder, collection_name: str = "default") -> "ChromaVectorStore":
@@ -43,7 +48,8 @@ class ChromaVectorStore(BaseVectorStore):
             Returns:
                 A ChromaVectorStore backed by an in-memory ChromaDB client.
         """
-        return cls(embedder, collection_name, chromadb.EphemeralClient())
+        client = chromadb.EphemeralClient(settings=Settings(anonymized_telemetry=False))
+        return cls(embedder, collection_name, client)
 
     @classmethod
     def persistent(cls, embedder: BaseEmbedder, path: str = "./ChromaVectorStore", collection_name: str = "default") -> "ChromaVectorStore":
@@ -60,7 +66,9 @@ class ChromaVectorStore(BaseVectorStore):
             Returns:
                 A ChromaVectorStore backed by a persistent ChromaDB client.
         """
-        return cls(embedder, collection_name, chromadb.PersistentClient(path))
+        client = chromadb.PersistentClient(path, settings=Settings(anonymized_telemetry=False))
+            
+        return cls(embedder, collection_name, client)
 
     def add(self, content: list[str] | str, embedding_content: list[str] | str = None, metadata: list[dict] | dict = None) -> None:
         current_row_count = self.count()
