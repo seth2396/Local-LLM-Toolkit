@@ -36,7 +36,7 @@ class BaseAgent:
 
     def __init__(self, system_prompt: str, client: OpenAI, model: str, tools: BaseTool | list[BaseTool] = None, tool_call_limit: int = 5, temperature: float = 0.2, stream: bool = False):
         if not isinstance(client, OpenAI):
-            raise NotImplementedError(f"Current LLM client is not supported. Supported clients are:{"".join(SUPPORTED_CLIENTS,"/n")}")
+            raise NotImplementedError(f"Current LLM client is not supported. Supported clients are: {', '.join(BaseAgent.SUPPORTED_CLIENTS)}")
         self.system_prompt = system_prompt
         self.client = client
         self.model = model
@@ -185,7 +185,8 @@ class BaseAgent:
         parts = self.system_prompt.split(inject_point_string)
         if len(parts) - 1 != num_injects:
             raise ValueError("Number of inject placeholders does not match number of injection values.")
-        self.system_prompt = "".join(part + inject_txt for part, inject_txt in zip(parts, inject + [""]))
+        inject_list = inject if isinstance(inject, list) else [inject]
+        self.system_prompt = "".join(part + inject_txt for part, inject_txt in zip(parts, inject_list + [""]))
         response = self.call(message)
         self.system_prompt = prompt_holder_var
 
@@ -262,10 +263,10 @@ class BaseAgent:
                     if tool:
                         arguments = json.loads(tool_call.function.arguments)
                         tool_response = tool.call(**arguments)
-                        tool_messages.append({"role": "tool", "content": str(tool_response)})
+                        tool_messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(tool_response)})
                     else:
                         logging.error(f"{tool_call.function.name} was called but does not exist in the tools supplied to the agent.")
-                        tool_messages.append({"role": "tool", "content": "ERROR: invalid request"})
+                        tool_messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "ERROR: invalid request"})
                 response = self.client.chat.completions.create(model=self.model, messages=tool_messages, tools=self.tools)
                 tool_calls += 1
             return response
