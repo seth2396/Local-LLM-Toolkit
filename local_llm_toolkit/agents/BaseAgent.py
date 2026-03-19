@@ -80,7 +80,7 @@ class BaseAgent:
                         print(chunk, end='', flush=True)
         """
         messages = [{"role": "system", "content": self.system_prompt}] + history + [{"role": "user", "content": message}]
-        logging.info(f"Calling API with {messages}")
+        logging.debug(f"Calling API with {messages}")
         if not self.stream:
             response = self.client.chat.completions.create(
                 model=self.model,

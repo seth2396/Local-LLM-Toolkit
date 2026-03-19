@@ -1,10 +1,14 @@
 import re
+from requests import HTTPError
 
 from .BaseChunker import _DEFAULT_CHUNK_SIZE
 from .Chunk import Chunk
 from .RecursiveChunk import RecursiveChunk
 from ..embedders import BaseEmbedder
 from ..loaders import Document
+
+
+import logging
 
 
 class SemanticChunk(RecursiveChunk):
@@ -64,11 +68,22 @@ class SemanticChunk(RecursiveChunk):
             text = document.content
 
         sentences = self._split_sentences(text)
+        sentences = self._sanitize_texts(sentences)
+        
 
         if len(sentences) <= 1:
             return [Chunk(content=text, metadata=document.metadata)]
 
-        embeddings = self.embedder.embed_documents(sentences)
+        try:
+            embeddings = self.embedder.embed_documents(sentences)
+        except HTTPError as e:
+            logging.warning("failed to embed batch, attempting to embed one by one")
+            embeddings = []
+            for sentence in sentences:
+                try:
+                    embeddings.append(self.embedder.embed(sentence))
+                except HTTPError:
+                    logging.warning(f"failed to embed:{sentence}")
         similarities = [
             self._cosine_similarity(embeddings[i], embeddings[i + 1])
             for i in range(len(embeddings) - 1)
@@ -89,7 +104,8 @@ class SemanticChunk(RecursiveChunk):
         """Split text into sentences on .  !  ? boundaries."""
         sentences = re.split(r'(?<=[.!?])\s+', text)
         return [s.strip() for s in sentences if s.strip()]
-
+        
+        return 
     def _cosine_similarity(self, a: list[float], b: list[float]) -> float:
         """Compute cosine similarity between two embedding vectors."""
         dot = sum(x * y for x, y in zip(a, b))
@@ -115,3 +131,5 @@ class SemanticChunk(RecursiveChunk):
             groups.append(" ".join(current))
 
         return groups
+
+    
