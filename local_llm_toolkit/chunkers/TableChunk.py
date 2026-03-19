@@ -13,5 +13,5 @@ class TableChunk(BaseChunker):
     def __init__(self):
         raise NotImplementedError("Table-based chunking not yet implemented")
 
-    def chunk(self, document: Document) -> list[Chunk]:
+    def _chunk(self, document: Document) -> list[Chunk]:
         raise NotImplementedError("Table-based chunking not yet implemented")

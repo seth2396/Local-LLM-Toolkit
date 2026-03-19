@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from .Chunk import Chunk
+from .ChunkFilter import DEFAULT_CHUNK_FILTER
 from ..loaders import Document
 
 _DEFAULT_CHUNK_SIZE = 200
@@ -11,47 +12,47 @@ class BaseChunker(ABC):
     """
         Abstract base class for text chunking strategies.
 
-        Subclasses must implement the `chunk` method. Configuration (e.g. chunk
-        size, overlap) is the responsibility of each strategy, as not all strategies
-        share the same parameters.
+        Subclasses must implement `_chunk()`. Configuration (e.g. chunk size, overlap)
+        is the responsibility of each strategy, as not all strategies share the same
+        parameters.
+
+        Filtering is applied automatically in `chunk()` via a ChunkFilter. Pass a
+        custom ChunkFilter to override the defaults, or False to skip filtering entirely.
 
         Example:
             >>> strategy = MyChunkStrategy(...)
             >>> chunks = strategy.chunk(document)
     """
 
-    @abstractmethod
-    def chunk(self, document: Document) -> list[Chunk]:
+    def chunk(self, document: Document, chunk_filter=None) -> list[Chunk]:
         """
-        Split a document into a list of Chunk objects.
+        Split a document into filtered Chunk objects.
+
+        Calls _chunk() to produce raw chunks, then applies chunk_filter.
+
+        Params:
+            document: Document to chunk.
+            chunk_filter: ChunkFilter to apply. None uses DEFAULT_CHUNK_FILTER. False skips filtering entirely.
+
+        Returns:
+            list[Chunk]: Filtered, ordered chunks with the document's metadata attached.
+        """
+        chunks = self._chunk(document)
+        f = chunk_filter if chunk_filter is not None else DEFAULT_CHUNK_FILTER
+        return f.filter(chunks) if f else chunks
+
+    @abstractmethod
+    def _chunk(self, document: Document) -> list[Chunk]:
+        """
+        Produce raw chunks from a document. Do not call directly — use chunk() instead.
 
         Args:
             document: Document to chunk. Content must be a string or convertible to one.
 
         Returns:
-            list[Chunk]: Ordered chunks with the document's metadata attached to each.
+            list[Chunk]: Unfiltered, ordered chunks with the document's metadata attached.
         """
 
-    def chunk_documents(self, documents: list[Document]) -> list[list[Chunk]]:
-        """Chunk each document in the list, returning one chunk list per document."""
-        return [self.chunk(document) for document in documents]
-
-    
-    #Helper functions
-    def _sanitize_texts(self, texts: list[str]) -> list[str]:
-        cleaned = []
-        for text in texts:
-            if not text:
-                continue
-                
-            # 1. Remove non-printable/control characters (like \x00, \x01)
-            # 2. Force UTF-8 encoding and ignore any malformed byte sequences
-            # 3. Strip leading/trailing whitespace
-            safe_text = "".join(ch for ch in text if ch.isprintable())
-            safe_text = safe_text.encode("utf-8", "ignore").decode("utf-8").strip()
-            
-            # Only add if the string isn't empty after cleaning
-            if safe_text:
-                cleaned.append(safe_text)
-                
-        return cleaned
+    def chunk_documents(self, documents: list[Document], chunk_filter=None) -> list[list[Chunk]]:
+        """Chunk each document in the list, applying chunk_filter to each."""
+        return [self.chunk(document, chunk_filter) for document in documents]

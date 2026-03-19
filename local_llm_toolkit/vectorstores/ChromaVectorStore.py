@@ -187,14 +187,15 @@ class ChromaVectorStore(BaseVectorStore):
         if not chunks:
             return {"added": 0, "updated": 0, "skipped": 0, "deleted": 0}
 
-        source_file = chunks[0].metadata.get("file_name", "unknown")
-        new_ids = [f"{source_file}_chunk_{i}" for i in range(len(chunks))]
+        source = chunks[0].metadata.get("source", "unknown")
+        new_ids = [f"{source}_chunk_{i}" for i in range(len(chunks))]
 
-        existing = self.collection.get(where={"file_name": source_file}, include=["metadatas"])
+        existing = self.collection.get(where={"source": source}, include=["metadatas"])
         existing_ids = set(existing["ids"])
+        existing_metadatas = existing["metadatas"] or []
         existing_hash_map = {
             id_: meta.get("hash_id")
-            for id_, meta in zip(existing["ids"], existing["metadatas"])
+            for id_, meta in zip(existing["ids"], existing_metadatas)
         }
 
         to_upsert_ids, to_upsert_contents, to_upsert_metadatas = [], [], []
