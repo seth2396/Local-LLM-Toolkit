@@ -34,7 +34,7 @@ class SemanticChunk(RecursiveChunk):
         self.embedder = embedder
         self.breakpoint_threshold = breakpoint_threshold
 
-    def chunk(self, document: Document) -> list[Chunk]:
+    def _chunk(self, document: Document) -> list[Chunk]:
         """
         Split a document into semantically coherent chunks.
 

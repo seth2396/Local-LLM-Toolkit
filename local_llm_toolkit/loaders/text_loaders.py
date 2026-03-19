@@ -1,5 +1,6 @@
 from pathlib import Path
-from PyPDF2 import PdfReader
+from typing import Callable
+import pdfplumber
 from docx import Document as DocxDocument
 from bs4 import BeautifulSoup
 import re
@@ -9,32 +10,116 @@ from .BaseLoader import BaseLoader
 from ..ingesters import FileItem, WebItem
 
 
+# ── Cleaning config ────────────────────────────────────────────────────────────
+# Three separate dicts keyed by doctype. _clean_for_doctype() applies all three in order:
+#   1. _ARTIFACTS   — literal string replacements       {find: replace}
+#   2. _CLEANING_PATTERNS — regex replacements          [(pattern, replacement)]
+#   3. _TRANSFORMS  — callable transforms               [Callable[[str], str]]
+
+_ARTIFACTS: dict[str, dict[str, str]] = {
+    "pdf":     {"\xa0": " ", "\f": "\n"},  # non-breaking space, form feed
+    "docx":    {"\xa0": " "},
+    "html":    {"\xa0": " "},
+    "txt":     {"\xa0": " "},
+    "md":      {},
+    "default": {"\xa0": " "},
+}
+
+_CLEANING_PATTERNS: dict[str, list[tuple[str, str]]] = {
+    "pdf": [
+        (r"-\n",    ""),        # rejoin hyphenated line breaks
+        (r"[ \t]+", " "),       # collapse horizontal whitespace
+        (r"\n{3,}", "\n\n"),    # collapse excessive blank lines
+    ],
+    "docx": [
+        (r"[ \t]+", " "),
+        (r"\n{3,}", "\n\n"),
+    ],
+    "html": [
+        (r"[ \t]+", " "),
+        (r"\n{3,}", "\n\n"),
+    ],
+    "txt": [
+        (r"[ \t]+", " "),
+        (r"\n{3,}", "\n\n"),
+    ],
+    "md":      [],  # preserve markdown structure as-is
+    "default": [
+        (r"[ \t]+", " "),
+        (r"\n{3,}", "\n\n"),
+    ],
+}
+
+_TRANSFORMS: dict[str, list[Callable[[str], str]]] = {
+    "pdf":     [],
+    "docx":    [],
+    "html":    [],
+    "txt":     [],
+    "md":      [],
+    "default": [],
+}
+
+
+def _clean(
+    text: str,
+    artifacts: dict[str, str] | None = None,
+    patterns: list[tuple[str, str]] | None = None,
+    transforms: list[Callable[[str], str]] | None = None,
+) -> str:
+    """
+    Clean a text string in three ordered steps.
+
+    Params:
+        text: The raw string to clean.
+        artifacts: Literal string replacements applied first. {find: replace}
+        patterns: Regex replacements applied second. [(pattern, replacement)]
+        transforms: Callables applied last for anything that doesn't fit regex. [fn(str) -> str]
+
+    Returns:
+        Cleaned and stripped string.
+    """
+    if artifacts:
+        for symbol, replacement in artifacts.items():
+            text = text.replace(symbol, replacement)
+
+    if patterns:
+        for pattern, replacement in patterns:
+            text = re.sub(pattern, replacement, text)
+
+    if transforms:
+        for transform in transforms:
+            text = transform(text)
+
+    return text.strip()
+
+
+def _clean_for_doctype(text: str, doctype: str) -> str:
+    """Look up all three cleaning configs for the given doctype and apply them."""
+    return _clean(
+        text,
+        artifacts=_ARTIFACTS.get(doctype, _ARTIFACTS["default"]),
+        patterns=_CLEANING_PATTERNS.get(doctype, _CLEANING_PATTERNS["default"]),
+        transforms=_TRANSFORMS.get(doctype, _TRANSFORMS["default"]),
+    )
+
+
 class PdfLoader(BaseLoader):
     """Loads PDF files, extracting and normalizing plain text from all pages."""
 
-    def normalize_text(self, raw_text: str) -> str:
-        """
-            Normalizes text for embedding using regular expressions
-
-            - Replace non-breaking spaces with normal spaces
-            - Remove control characters.
-            - Collapse multiple spaces/newlines.
-        """
-        text = raw_text.replace("\xa0", " ")
-        text = re.sub(r"\s+", " ", text)  # collapse whitespace
-        return text
-
     def load(self, item: FileItem) -> Document:
-        """Extract text from all pages of a PDF, normalize whitespace, and merge PDF metadata."""
+        """Extract text from all pages of a PDF, clean, and merge PDF metadata."""
         document = Document(item)
-        with open(item.path, 'rb') as openfile:
-            reader = PdfReader(openfile)
-            content = ""
-            for page in reader.pages:
-                content += page.extract_text()
-
-            document.content = self.normalize_text(content)
-            document.metadata.update(reader.metadata)
+        with pdfplumber.open(item.path) as pdf:
+            content = "\n".join(
+                text for page in pdf.pages
+                if (text := page.extract_text())
+            )
+            document.content = _clean_for_doctype(content, "pdf")
+            if pdf.metadata:
+                document.metadata.update({
+                    k: v for k, v in pdf.metadata.items()
+                    if isinstance(v, (str, int, float, bool))
+                })
         return document
 
 
@@ -73,11 +158,12 @@ class DocxLoader(BaseLoader):
         document = Document(item)
 
         word_doc = DocxDocument(item.path)
-        document.content = "\n".join([para.text for para in word_doc.paragraphs])
+        raw = "\n".join([para.text for para in word_doc.paragraphs])
 
         for table in word_doc.tables:
-            document.content += "\n" + self.extract_table(table)
+            raw += "\n" + self.extract_table(table)
 
+        document.content = _clean_for_doctype(raw, "docx")
         return document
 
 
@@ -88,7 +174,7 @@ class TextLoader(BaseLoader):
         """Read the full contents of a plain text file."""
         document = Document(item)
         with open(item.path, 'r', encoding='utf-8') as f:
-            document.content = f.read()
+            document.content = _clean_for_doctype(f.read(), "txt")
         return document
 
 
@@ -99,7 +185,7 @@ class MarkdownLoader(BaseLoader):
         """Read the full contents of a Markdown file."""
         document = Document(item)
         with open(item.path, 'r', encoding='utf-8') as f:
-            document.content = f.read()
+            document.content = _clean_for_doctype(f.read(), "md")
         return document
 
 
@@ -122,7 +208,7 @@ class HTMLLoader(BaseLoader):
             with open(item.path, 'r', encoding='utf-8') as f:
                 html = f.read()
         soup = BeautifulSoup(html, 'html.parser')
-        document.content = soup.get_text()
+        document.content = _clean_for_doctype(soup.get_text(), "html")
         return document
 
 

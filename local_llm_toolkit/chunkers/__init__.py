@@ -1,5 +1,6 @@
 from .Chunk import Chunk
 from .BaseChunker import BaseChunker
+from .ChunkFilter import ChunkFilter, DEFAULT_CHUNK_FILTER
 from .FixedSizeChunk import FixedSizeChunk
 from .RecursiveChunk import RecursiveChunk
 from .SemanticChunk import SemanticChunk

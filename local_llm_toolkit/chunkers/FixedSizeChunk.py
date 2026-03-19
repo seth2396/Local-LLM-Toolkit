@@ -37,7 +37,7 @@ class FixedSizeChunk(BaseChunker):
             end = start + self.max_tokens
         return segments
 
-    def chunk(self, document: Document) -> list[Chunk]:
+    def _chunk(self, document: Document) -> list[Chunk]:
         """
         Split a document into fixed-size chunks.
 

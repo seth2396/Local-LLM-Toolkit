@@ -46,7 +46,7 @@ class UniversalChunker(BaseChunker):
     def __init__(self, embedder: BaseEmbedder = None):
         self.embedder = embedder
 
-    def chunk(self, document: Document, chunk_strategy: dict = None) -> list[Chunk]:
+    def chunk(self, document: Document, chunk_strategy: dict = None, chunk_filter=None) -> list[Chunk]:
         """
         Chunk a document using the strategy appropriate for its file extension.
 
@@ -54,6 +54,8 @@ class UniversalChunker(BaseChunker):
             document: Document to chunk. Must have 'extension' in its metadata.
             chunk_strategy: Optional mapping of file extension to strategy name
                 (a key from STRATEGY_REGISTRY) to override the defaults.
+            chunk_filter: ChunkFilter to apply after chunking. Defaults to
+                DEFAULT_CHUNK_FILTER. Pass None to skip filtering.
 
         Returns:
             list[Chunk]: Chunks produced by the selected strategy.
@@ -77,4 +79,7 @@ class UniversalChunker(BaseChunker):
         else:
             selected_class = strategy()
 
-        return selected_class.chunk(document)
+        return selected_class.chunk(document, chunk_filter)
+
+    def _chunk(self, document: Document) -> list[Chunk]:
+        return self.chunk(document)

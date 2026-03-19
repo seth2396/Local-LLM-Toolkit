@@ -30,7 +30,7 @@ class RecursiveChunk(BaseChunker):
         self.overlap_tokens = overlap_tokens
         self.separators = separators
 
-    def chunk(self, document: Document) -> list[Chunk]:
+    def _chunk(self, document: Document) -> list[Chunk]:
         """
         Split a document into chunks using recursive separator-based splitting.
 
