@@ -11,7 +11,7 @@ class OllamaEmbedder(BaseEmbedder):
         self.model = model
         self.api_url = api_url
 
-    def embed(self, text: str) -> list[float]:
+    def _embed(self, text: str) -> list[float]:
         response = requests.post(
             f"{self.api_url}/api/embed",
             json={"model": self.model, "input": text}
@@ -19,7 +19,7 @@ class OllamaEmbedder(BaseEmbedder):
         response.raise_for_status()
         return response.json()['embeddings'][0]
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+    def _embed_documents(self, texts: list[str]) -> list[list[float]]:
         response = requests.post(
             f"{self.api_url}/api/embed",
             json={"model": self.model, "input": texts}

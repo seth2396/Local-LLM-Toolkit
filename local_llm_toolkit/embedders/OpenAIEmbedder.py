@@ -11,7 +11,7 @@ class OpenAIEmbedder(BaseEmbedder):
         self.model = model
         self.api_key = api_key
 
-    def embed(self, text: str) -> list[float]:
+    def _embed(self, text: str) -> list[float]:
         client = OpenAI(api_key=self.api_key)
         response = client.embeddings.create(
             model=self.model,
@@ -19,7 +19,7 @@ class OpenAIEmbedder(BaseEmbedder):
         )
         return response.data[0].embedding
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+    def _embed_documents(self, texts: list[str]) -> list[list[float]]:
         client = OpenAI(api_key=self.api_key)
         response = client.embeddings.create(
             model=self.model,
