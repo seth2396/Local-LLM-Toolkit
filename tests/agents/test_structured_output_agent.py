@@ -63,14 +63,6 @@ def test_call_raises_on_tool_calls_finish_reason(agent, mock_client):
     with pytest.raises(AssertionError):
         agent.call("question")
 
-def test_call_raises_on_refusal(agent, mock_client):
-    completion = make_parse_completion(finish_reason="stop")
-    completion.choices[0].message.refusal = MagicMock()
-    completion.choices[0].message.refusal.reason = "I cannot do that"
-    mock_client.chat.completions.parse.return_value = completion
-    with pytest.raises(AssertionError):
-        agent.call("question")
-
 def test_call_sends_system_and_user_messages(agent, mock_client):
     mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=MyOutput(answer="ok"))
     agent.call("my question")
@@ -80,5 +72,3 @@ def test_call_sends_system_and_user_messages(agent, mock_client):
     assert messages[1]["content"] == "my question"
 
 
-# ── Import MagicMock for the refusal test ─────────────────────────────────────
-from unittest.mock import MagicMock

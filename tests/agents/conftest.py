@@ -36,6 +36,7 @@ def make_parse_completion(parsed=None, finish_reason="stop", refusal=None):
     choice.finish_reason = finish_reason
     choice.message.parsed = parsed
     choice.message.refusal = refusal
+    choice.message.content = parsed.model_dump_json() if parsed is not None else None
     completion = MagicMock()
     completion.choices = [choice]
     return completion

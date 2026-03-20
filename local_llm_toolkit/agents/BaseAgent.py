@@ -241,8 +241,12 @@ class BaseAgent:
         content = message.content
         if isinstance(content, list):
             for block in content:
-                if getattr(block, "type", None) == "text":
-                    return block.text
+                if isinstance(block, dict):
+                    if block.get("type") == "text":
+                        return block.get("text", "")
+                else:
+                    if getattr(block, "type", None) == "text":
+                        return block.text
             return ""
         return content or ""
 
