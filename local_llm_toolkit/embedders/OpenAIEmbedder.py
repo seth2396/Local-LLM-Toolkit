@@ -7,9 +7,10 @@ class OpenAIEmbedder(BaseEmbedder):
         Embedder using OpenAI's embedding models.
         Default model is "text-embedding-3-small".
     """
-    def __init__(self, model: str, api_key: str):
+    def __init__(self, model: str, api_key: str, batch_limit: int = None):
         self.model = model
         self.api_key = api_key
+        self.batch_limit = batch_limit
 
     def _embed(self, text: str) -> list[float]:
         client = OpenAI(api_key=self.api_key)
