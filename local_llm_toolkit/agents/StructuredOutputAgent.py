@@ -40,7 +40,7 @@ class StructuredOutputAgent(BaseAgent):
         logging.debug(f"StructuredOutputAgent called with structure: {self.structure_name} and schema: {self.structure.model_json_schema()}")
         messages = [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": message}]
 
-        completion = self.client.chat.completions.create(
+        completion = self.client.chat.completions.parse(
             model=self.model,
             messages=messages,
             tools=self.tools,
@@ -52,5 +52,9 @@ class StructuredOutputAgent(BaseAgent):
         if choice.finish_reason == "tool_calls":
             raise AssertionError("Tool calls not supported with structured output agent.")
 
+        if choice.message.parsed is not None:
+            return choice.message.parsed
+
+        # Fallback for reasoning models — content is a list of blocks, parsed is None
         content = self._extract_content(choice.message)
         return self.structure.model_validate_json(content)
