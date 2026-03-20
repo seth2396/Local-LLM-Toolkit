@@ -11,9 +11,10 @@ class DatabricksEmbedder(BaseEmbedder):
         client (DatabricksOpenAI): A pre-configured DatabricksOpenAI client instance.
     """
 
-    def __init__(self, model: str, client: DatabricksOpenAI):
+    def __init__(self, model: str, client: DatabricksOpenAI, batch_limit: int = None):
         self.model = model
         self.client = client
+        self.batch_limit = batch_limit
 
     def _embed(self, text: str) -> list[float]:
         response = self.client.embeddings.create(
