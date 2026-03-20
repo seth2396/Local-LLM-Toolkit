@@ -15,14 +15,14 @@ class DatabricksEmbedder(BaseEmbedder):
         self.model = model
         self.client = client
 
-    def embed(self, text: str) -> list[float]:
+    def _embed(self, text: str) -> list[float]:
         response = self.client.embeddings.create(
             model=self.model,
             input=[text]
         )
         return response.data[0].embedding
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+    def _embed_documents(self, texts: list[str]) -> list[list[float]]:
         response = self.client.embeddings.create(
             model=self.model,
             input=texts
