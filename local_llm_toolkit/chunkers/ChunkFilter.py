@@ -28,7 +28,7 @@ class ChunkFilter:
         min_alpha_ratio: float = 0.5,
         max_digit_ratio: float = 0.3,
         max_symbol_ratio: float = 0.2,
-        min_word_count: int = 3,
+        min_word_count: int = 5,
         min_avg_word_length: float = 2.0,
         max_avg_word_length: float = 20.0,
     ):

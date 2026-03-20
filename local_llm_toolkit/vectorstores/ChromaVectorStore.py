@@ -6,6 +6,9 @@ from ..chunkers import Chunk
 from .BaseVectorStore import BaseVectorStore
 import os
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ChromaVectorStore(BaseVectorStore):
@@ -84,10 +87,141 @@ class ChromaVectorStore(BaseVectorStore):
 
         self.collection.add(ids=ids, documents=content, embeddings=embedded_texts, metadatas=metadata)
 
+    
+    
+
+    def query_text(
+        self,
+        query: str,
+        top_k: int = 5,
+        include: Optional[list[str]] = None,
+        overfetch: float = 1.0,
+    ) -> list[dict]:
+        """
+            Search the vector database for all case variations of a string
+            using pure substring matching via collection.get() and $contains.
+            Deduplicates results by document ID across all variation queries.
+
+            Args:
+                query    : The search string to vary and match as a substring.
+                top_k    : Maximum number of results to return.
+                include  : Fields to return. Passed directly to Chroma. Valid values:
+                        "ids", "documents", "metadatas", "embeddings", "uris", "data"
+                        Defaults to ["documents"].
+                        Note: "distances" is not valid — get() does no ranking.
+                overfetch: Multiplier for how many results to collect per variant
+                        before trimming to top_k. e.g. 1.5 -> collect top_k * 1.5
+                        results per variant before dedup.
+
+            Returns:
+                List[dict] hits, deduplicated, trimmed to top_k.
+                Each dict always contains 'id' (from Chroma's ids field, always fetched),
+                plus singular-key versions of any requested include fields:
+                    "ids"       -> "id"
+                    "documents" -> "document"
+                    "metadatas" -> "metadata"
+                    "embeddings"-> "embedding"
+                    "uris"      -> "uri"
+                    "data"      -> "data"
+        """
+        if top_k <= 0:
+            return []
+
+        # -- Resolve include fields ------------------------------------------
+        if include is None:
+            include = ["documents"]
+
+        # Don't mutate caller's list
+        include = list(include)
+
+        # Strip distances — get() does not support it
+        if "distances" in include:
+            logger.warning("'distances' is not supported in collection.get() and will be ignored.")
+            include.remove("distances")
+
+        # Compute per-variant result cap from overfetch
+        per_variant_limit = max(top_k, int(round(top_k * float(overfetch))), 1)
+
+        # -- Field name map: Chroma plural key -> singular hit dict key ------
+        field_map = {
+            "ids":        "id",
+            "documents":  "document",
+            "metadatas":  "metadata",
+            "embeddings": "embedding",
+            "uris":       "uri",
+            "data":       "data",
+        }
+
+        # -- Build case variations -------------------------------------------
+        words = query.split()
+        variations = [
+            query,
+            query.lower(),
+            query.upper(),
+            query.capitalize(),
+            query.title(),
+            query.swapcase(),
+            " ".join(w.upper() if i == 0 else w.lower() for i, w in enumerate(words)),
+            " ".join(w.capitalize() for w in words),
+            " ".join(w.upper() if i % 2 else w.lower() for i, w in enumerate(words)),
+        ]
+        seen_variations = set()
+        unique_variations = []
+        for v in variations:
+            if v not in seen_variations:
+                seen_variations.add(v)
+                unique_variations.append(v)
+
+        logger.debug(
+            "Starting substring search | query=%r | variations=%d | top_k=%d",
+            query, len(unique_variations), top_k
+        )
+
+        # -- Query and deduplicate results ------------------------------------
+        seen_ids = set()
+        hits = []
+
+        for variant in unique_variations:
+            try:
+                response = self.collection.get(
+                    where_document={"$contains": variant},
+                    include=include,
+                    limit=per_variant_limit,
+                )
+
+                ids = response.get("ids") or []
+
+                new_count = 0
+                for i, doc_id in enumerate(ids):
+                    if doc_id not in seen_ids:
+                        seen_ids.add(doc_id)
+                        hit = {}
+                        for chroma_key, hit_key in field_map.items():
+                            # Only include fields the caller asked for
+                            if chroma_key in include:
+                                values = response.get(chroma_key)
+                                if values is not None:
+                                    hit[hit_key] = values[i]
+                        hits.append(hit)
+                        new_count += 1
+
+                logger.debug(
+                    "Variant %r -> %d hits, %d new after dedup",
+                    variant, len(ids), new_count
+                )
+
+            except Exception as e:
+                logger.warning("Query failed for variant %r: %s", variant, e)
+                continue
+
+        logger.debug("Search complete | total unique results=%d", len(hits))
+
+        return hits[:top_k]
+
 
     def query(
         self,
-        query: str,
+        query: str | list[str],
         top_k: int = 5,
         include: Optional[list[str]] = None,
         max_distance: float = 1.0,
@@ -151,6 +285,8 @@ class ChromaVectorStore(BaseVectorStore):
                 "documents": "document",
                 "metadatas": "metadata",
                 "embeddings": "embedding",
+                "uris": "uri",
+                "data": "data"
             }
             for chroma_key, hit_key in field_map.items():
                 values = results.get(chroma_key)
@@ -163,7 +299,6 @@ class ChromaVectorStore(BaseVectorStore):
         hits.sort(key=lambda x: x["distance"])
 
         return hits[:top_k]
-
 
     def count(self) -> int:
         """Returns the total number of entries in the collection."""
@@ -188,7 +323,8 @@ class ChromaVectorStore(BaseVectorStore):
             return {"added": 0, "updated": 0, "skipped": 0, "deleted": 0}
 
         source = chunks[0].metadata.get("source", "unknown")
-        new_ids = [f"{source}_chunk_{i}" for i in range(len(chunks))]
+        name = chunks[0].metadata.get("name", "unknown")
+        new_ids = [f"{name}_chunk_{i}" for i in range(len(chunks))]
 
         existing = self.collection.get(where={"source": source}, include=["metadatas"])
         existing_ids = set(existing["ids"])

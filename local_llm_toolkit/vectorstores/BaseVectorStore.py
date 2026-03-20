@@ -27,7 +27,17 @@ class BaseVectorStore(ABC):
     @abstractmethod
     def query(self, query: str, top_k: int = 5) -> Any:
         """
-            Query the vector database.
+            Query the vector database to find semantic matches based on embeddings.
+
+            Params:
+                query: String to query against
+                top_k: Number of results to return
+        """
+
+    @abstractmethod
+    def query_text(self, query: str, top_k: int = 5) -> list[dict]:
+        """
+            Queries the vectordatabase to find chunks that contain the text string provided.
 
             Params:
                 query: String to query against

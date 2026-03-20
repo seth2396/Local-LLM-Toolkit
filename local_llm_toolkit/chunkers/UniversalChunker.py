@@ -19,8 +19,8 @@ STRATEGY_REGISTRY = {
 }
 
 DEFAULT_STRATEGY_FOR_TYPE = {
-    '.pdf': SemanticChunk,
-    '.docx': SemanticChunk,
+    '.pdf': RecursiveChunk,
+    '.docx': RecursiveChunk,
     '.txt': RecursiveChunk,
     '.md': RecursiveChunk,
     '.html': FixedSizeChunk,

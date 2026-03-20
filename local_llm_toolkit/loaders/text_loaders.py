@@ -17,7 +17,11 @@ from ..ingesters import FileItem, WebItem
 #   3. _TRANSFORMS  — callable transforms               [Callable[[str], str]]
 
 _ARTIFACTS: dict[str, dict[str, str]] = {
-    "pdf":     {"\xa0": " ", "\f": "\n"},  # non-breaking space, form feed
+    "pdf":{
+        "\xa0": " ",
+        "\f": "\n",
+        "\uf02a":" "
+        },  # non-breaking space, form feed
     "docx":    {"\xa0": " "},
     "html":    {"\xa0": " "},
     "txt":     {"\xa0": " "},

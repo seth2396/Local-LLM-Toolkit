@@ -68,8 +68,6 @@ class SemanticChunk(RecursiveChunk):
             text = document.content
 
         sentences = self._split_sentences(text)
-        sentences = self._sanitize_texts(sentences)
-        
 
         if len(sentences) <= 1:
             return [Chunk(content=text, metadata=document.metadata)]
