@@ -48,27 +48,25 @@ def test_stores_structure_name(agent):
 
 def test_call_returns_parsed_object(agent, mock_client):
     parsed = MyOutput(answer="42")
-    mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=parsed)
+    mock_client.chat.completions.create.return_value = make_parse_completion(parsed=parsed)
     result = agent.call("What is the answer?")
     assert result == parsed
 
-def test_call_uses_parse_not_create(agent, mock_client):
-    mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=MyOutput(answer="ok"))
+def test_call_uses_create_not_parse(agent, mock_client):
+    mock_client.chat.completions.create.return_value = make_parse_completion(parsed=MyOutput(answer="ok"))
     agent.call("question")
-    assert mock_client.chat.completions.parse.called
-    assert not mock_client.chat.completions.create.called
+    assert mock_client.chat.completions.create.called
+    assert not mock_client.chat.completions.parse.called
 
 def test_call_raises_on_tool_calls_finish_reason(agent, mock_client):
-    mock_client.chat.completions.parse.return_value = make_parse_completion(finish_reason="tool_calls")
+    mock_client.chat.completions.create.return_value = make_parse_completion(finish_reason="tool_calls")
     with pytest.raises(AssertionError):
         agent.call("question")
 
 def test_call_sends_system_and_user_messages(agent, mock_client):
-    mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=MyOutput(answer="ok"))
+    mock_client.chat.completions.create.return_value = make_parse_completion(parsed=MyOutput(answer="ok"))
     agent.call("my question")
-    messages = mock_client.chat.completions.parse.call_args[1]["messages"]
+    messages = mock_client.chat.completions.create.call_args[1]["messages"]
     assert messages[0]["role"] == "system"
     assert messages[1]["role"] == "user"
     assert messages[1]["content"] == "my question"
-
-

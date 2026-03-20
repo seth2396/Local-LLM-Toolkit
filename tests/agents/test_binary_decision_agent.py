@@ -29,17 +29,17 @@ def test_truefalse_mode_uses_tf_choice_structure(tf_agent):
 
 def test_binary_call_returns_int_one(binary_agent, mock_client):
     parsed = BinaryDecisionAgent.BinaryChoice(value=1)
-    mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=parsed)
+    mock_client.chat.completions.create.return_value = make_parse_completion(parsed=parsed)
     assert binary_agent.call("yes or no?") == 1
 
 def test_binary_call_returns_int_zero(binary_agent, mock_client):
     parsed = BinaryDecisionAgent.BinaryChoice(value=0)
-    mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=parsed)
+    mock_client.chat.completions.create.return_value = make_parse_completion(parsed=parsed)
     assert binary_agent.call("yes or no?") == 0
 
 def test_binary_call_returns_int_not_object(binary_agent, mock_client):
     parsed = BinaryDecisionAgent.BinaryChoice(value=1)
-    mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=parsed)
+    mock_client.chat.completions.create.return_value = make_parse_completion(parsed=parsed)
     result = binary_agent.call("question")
     assert isinstance(result, int)
 
@@ -48,17 +48,17 @@ def test_binary_call_returns_int_not_object(binary_agent, mock_client):
 
 def test_tf_call_returns_true(tf_agent, mock_client):
     parsed = BinaryDecisionAgent.TFChoice(value=True)
-    mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=parsed)
+    mock_client.chat.completions.create.return_value = make_parse_completion(parsed=parsed)
     assert tf_agent.call("is this true?") is True
 
 def test_tf_call_returns_false(tf_agent, mock_client):
     parsed = BinaryDecisionAgent.TFChoice(value=False)
-    mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=parsed)
+    mock_client.chat.completions.create.return_value = make_parse_completion(parsed=parsed)
     assert tf_agent.call("is this true?") is False
 
 def test_tf_call_returns_bool_not_object(tf_agent, mock_client):
     parsed = BinaryDecisionAgent.TFChoice(value=True)
-    mock_client.chat.completions.parse.return_value = make_parse_completion(parsed=parsed)
+    mock_client.chat.completions.create.return_value = make_parse_completion(parsed=parsed)
     result = tf_agent.call("question")
     assert isinstance(result, bool)
 
