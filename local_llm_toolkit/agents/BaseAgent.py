@@ -92,9 +92,9 @@ class BaseAgent:
 
             tool_response = self._check_and_handle_tool_call(response, messages)
             if tool_response:
-                return tool_response.choices[0].message.content
+                return self._extract_content(tool_response.choices[0].message)
 
-            return response.choices[0].message.content
+            return self._extract_content(response.choices[0].message)
 
         else:
             response_stream = self.client.chat.completions.create(
@@ -223,6 +223,28 @@ class BaseAgent:
             }
 
         return Tool(function=self.call, name=name, description=description, parameters=parameters)
+
+    def _extract_content(self, message) -> str:
+        """
+        Extract the text content from a message, handling both standard and reasoning models.
+
+        Standard models return message.content as a plain string. Reasoning models
+        (e.g. o1, o3, deepseek-r1) return it as a list of typed blocks:
+            [{"type": "thinking", "thinking": "..."}, {"type": "text", "text": "..."}]
+
+        Params:
+            message: The message object from response.choices[0].message.
+
+        Returns:
+            The text content as a string.
+        """
+        content = message.content
+        if isinstance(content, list):
+            for block in content:
+                if getattr(block, "type", None) == "text":
+                    return block.text
+            return ""
+        return content or ""
 
     def _check_and_handle_tool_call(self, response, messages):
         """
