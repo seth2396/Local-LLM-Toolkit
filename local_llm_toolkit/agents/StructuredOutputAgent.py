@@ -40,18 +40,17 @@ class StructuredOutputAgent(BaseAgent):
         logging.debug(f"StructuredOutputAgent called with structure: {self.structure_name} and schema: {self.structure.model_json_schema()}")
         messages = [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": message}]
 
-        completion = self.client.chat.completions.parse(
+        completion = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
             tools=self.tools,
             response_format=self.structure,
             temperature=self.temperature)
 
-        response = completion.choices[0].message
+        choice = completion.choices[0]
 
-        if completion.choices[0].finish_reason == "tool_calls":
+        if choice.finish_reason == "tool_calls":
             raise AssertionError("Tool calls not supported with structured output agent.")
-        elif response.refusal:
-            raise AssertionError(f"Model refused to provide structured output: {response.refusal.reason}")
-        else:
-            return response.parsed
+
+        content = self._extract_content(choice.message)
+        return self.structure.model_validate_json(content)
