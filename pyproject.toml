@@ -11,5 +11,8 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
 
+[project.optional-dependencies]
+databricks = ["databricks-openai"]
+
 [tool.setuptools]
 packages = ["local_llm_toolkit"]

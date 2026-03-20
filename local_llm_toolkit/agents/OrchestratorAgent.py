@@ -67,8 +67,21 @@ class OrchestratorAgent(StructuredOutputAgent):
             f"{tools_section}\n\nGoal: {goal}"
         )
         messages = [{"role": "system", "content": "You are a capability assessment agent. Determine if a goal is achievable with the provided tools."}, {"role": "user", "content": prompt}]
-        completion = self.client.chat.completions.parse(model=self.model, messages=messages, response_format=FeasibilityCheck, temperature=0.0)
-        return completion.choices[0].message.parsed
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "FeasibilityCheck",
+                    "schema": FeasibilityCheck.model_json_schema(),
+                    "strict": True,
+                }
+            },
+            temperature=0.0
+        )
+        content = self._extract_content(completion.choices[0].message)
+        return FeasibilityCheck.model_validate_json(content)
 
     def run(self, goal: str, executor: BaseAgent) -> TaskList:
         """
